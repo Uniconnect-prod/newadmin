@@ -9,7 +9,7 @@
     "build": "npm --prefix client run build",
     "test": "npm --prefix server test",
     "db:init": "npm --prefix server run db:init",
-    "db:verify": "npm --prefix server run db:verify",
+    "db:migrate": "npm --prefix server run db:migrate",
     "setup:superadmin": "npm --prefix server run setup:superadmin"
   }
 }

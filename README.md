@@ -80,25 +80,15 @@ npm run dev                 # http://localhost:5173 (proxies /api to :5002)
 npm run build               # → client/dist
 ```
 
-### Local demo without touching any real database or API
+### Database and administrative operations
 
 ```bash
 cd server
-npm run mock:platform-api                                      # synthetic platform APIs on 127.0.0.1:5055
-SEED_SUPER_ADMIN_PASSWORD='choose-a-local-password' npm run dev:memory   # API with an in-memory admin store
+npm run db:init                 # Initialize fresh relational PostgreSQL database schema
+npm run db:migrate              # Run database migrations
+npm run setup:superadmin        # Provision or verify the primary Super Admin account
+npm test                        # Run automated test suite
 ```
-
-Sign in as `superadmin` with that password, open **Platforms → Add platform**, choose a preset and
-point the base URL at the mock:
-
-| Mock | Base URL | Auth | Credentials |
-|---|---|---|---|
-| ALPHA (GHSuperWinnings-style) | `http://127.0.0.1:5055/api` | Login → token, `POST /admin/login` with `email`/`password` | `reporting@alpha.example.test` / `alpha-test-password` |
-| BETA (different conventions) | `http://127.0.0.1:5055` | API key header `X-Api-Key` | `beta-key-456` |
-
-The mock data is synthetic and deterministic (see `server/test/fixtures/mockPlatformApi.js`).
-`dev:memory` only allows the private address `127.0.0.1:5055` because it sets
-`OUTBOUND_ALLOW_PRIVATE_HOSTS`; never set that in production.
 
 ---
 
