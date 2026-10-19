@@ -55,6 +55,7 @@ export const AppRouter = () => (
 
       <Route path="/platforms" element={<SA><PlatformsListPage /></SA>} />
       <Route path="/platforms/new" element={<SA><PlatformWizardPage /></SA>} />
+      <Route path="/platforms/countries" element={<SA><CountriesPage /></SA>} />
       <Route path="/platforms/api-configuration" element={<SA><PlatformIndexPage mode="api" /></SA>} />
       <Route path="/platforms/data-mapping" element={<SA><PlatformIndexPage mode="mapping" /></SA>} />
       <Route path="/platforms/history" element={<SA><IntegrationHistoryPage /></SA>} />

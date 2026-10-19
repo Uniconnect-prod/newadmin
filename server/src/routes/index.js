@@ -64,10 +64,15 @@ export function buildRouter({ disableRateLimits = false } = {}) {
   pmRouter.put('/allowlist', h(pm.setAllowlist));
   pmRouter.get('/', h(pm.list));
   pmRouter.post('/', h(pm.create));
+  pmRouter.post('/test-health', integrationLimiter, h(pm.testHealth));
+  pmRouter.post('/inspect', integrationLimiter, h(pm.inspect));
+  pmRouter.post('/preview-metrics', h(pm.previewMetrics));
   pmRouter.get('/:id', h(pm.getById));
   pmRouter.put('/:id', h(pm.update));
   pmRouter.put('/:id/integration', h(pm.saveIntegration));
+  pmRouter.post('/:id/test-health', integrationLimiter, h(pm.testHealth));
   pmRouter.post('/:id/inspect', integrationLimiter, h(pm.inspect));
+  pmRouter.post('/:id/preview-metrics', h(pm.previewMetrics));
   pmRouter.post('/:id/validate', integrationLimiter, h(pm.validate));
   pmRouter.post('/:id/activate', h(pm.activate));
   pmRouter.post('/:id/disable', h(pm.disable));

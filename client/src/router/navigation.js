@@ -1,6 +1,6 @@
 import {
   LayoutDashboard, Layers, BarChart3, Users, ShieldCheck, ScrollText, Settings,
-  List, PlusCircle, PlugZap, GitMerge, History, CalendarRange, Wallet, UserPlus, RefreshCcw, UserMinus
+  List, PlusCircle, PlugZap, GitMerge, History, CalendarRange, Wallet, UserPlus, RefreshCcw, UserMinus, Globe2
 } from 'lucide-react';
 
 /**
@@ -18,6 +18,7 @@ export const NAV = [
     children: [
       { id: 'platforms-all', label: 'All Platforms', icon: List, to: '/platforms', exact: true },
       { id: 'platforms-new', label: 'Add Platform', icon: PlusCircle, to: '/platforms/new' },
+      { id: 'platforms-countries', label: 'Countries', icon: Globe2, to: '/platforms/countries', permission: 'countries:manage' },
       { id: 'platforms-api', label: 'API Configuration', icon: PlugZap, to: '/platforms/api-configuration' },
       { id: 'platforms-mapping', label: 'Data Mapping', icon: GitMerge, to: '/platforms/data-mapping' },
       { id: 'platforms-history', label: 'Connection & Validation History', icon: History, to: '/platforms/history' }
@@ -59,6 +60,7 @@ export function visibleNav(ctx) {
 
 const EXTRA_CRUMBS = [
   { match: /^\/platforms\/\d+/, crumbs: ['Platforms', 'Platform configuration'] },
+  { match: /^\/platforms\/countries/, crumbs: ['Platforms', 'Countries'] },
   { match: /^\/settings\/countries/, crumbs: ['Settings', 'Countries'] },
   { match: /^\/settings\/approved-hosts/, crumbs: ['Settings', 'Approved API hosts'] }
 ];

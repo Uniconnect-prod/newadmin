@@ -47,6 +47,74 @@ export const STEPS = [
   { id: 'validate', label: 'Validate & activate', short: 'Activate' }
 ];
 
+export const CORE_METRICS = [
+  {
+    id: 'totalSubscribers',
+    label: 'Total Subscribers',
+    description: 'Total active subscriber base',
+    canonical: 'subscriber_count',
+    example: 'data.totalSubscribers'
+  },
+  {
+    id: 'dailySubscribers',
+    label: 'Daily Subscribers',
+    description: 'New subscriptions for the period or day',
+    canonical: 'new_subscribers',
+    example: 'data.dailySubscribers'
+  },
+  {
+    id: 'durationSubscribers',
+    label: 'Duration Subscribers',
+    description: 'Subscribers active across duration / validity window',
+    canonical: 'duration_subscribers',
+    example: 'data.durationSubscribers'
+  },
+  {
+    id: 'churnSubscribers',
+    label: 'Churn Subscribers',
+    description: 'Unsubscriptions / deactivations / churned accounts',
+    canonical: 'deactivations',
+    example: 'data.churnSubscribers'
+  },
+  {
+    id: 'renewals',
+    label: 'Renewals',
+    description: 'Successful recurring renewals',
+    canonical: 'renewal_count',
+    example: 'data.renewals'
+  },
+  {
+    id: 'monthlyIncome',
+    label: 'Monthly Income',
+    description: 'Total revenue / monthly income generated',
+    canonical: 'grand_total',
+    example: 'data.monthlyIncome'
+  }
+];
+
+export function resolveClientPath(obj, path) {
+  if (!path || typeof path !== 'string' || !obj) return { found: false, value: null };
+  const parts = path.trim().split('.');
+  let current = obj;
+  for (const part of parts) {
+    if (current === null || current === undefined || typeof current !== 'object') {
+      return { found: false, value: null };
+    }
+    current = current[part];
+  }
+  return { found: current !== undefined, value: current };
+}
+
+export function validateClientValue(val) {
+  if (val === null || val === undefined) return { valid: false, parsed: null, error: 'Value is null or undefined.' };
+  if (typeof val === 'number' && Number.isFinite(val)) return { valid: true, parsed: val, error: null };
+  if (typeof val === 'string' && val.trim() !== '') {
+    const num = Number(val.replace(/,/g, ''));
+    if (Number.isFinite(num)) return { valid: true, parsed: num, error: null };
+  }
+  return { valid: false, parsed: null, error: `Expected numeric value, received ${typeof val}.` };
+}
+
 /**
  * Collect candidate paths from an inspection result to suggest mapping paths.
  */

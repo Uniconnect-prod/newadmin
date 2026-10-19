@@ -36,6 +36,20 @@ export function getStore() {
   return activeStore;
 }
 
+export function isPostgres() {
+  return activeStore?.kind === 'postgres';
+}
+
+export function query(sql, params = []) {
+  if (!activeStore?.query) throw new Error('[Store] Direct SQL query is only supported on PostgreSQL store.');
+  return activeStore.query(sql, params);
+}
+
+export function transaction(cb) {
+  if (!activeStore?.transaction) throw new Error('[Store] Transaction is only supported on PostgreSQL store.');
+  return activeStore.transaction(cb);
+}
+
 export function col(name) {
   return getStore().collection(name);
 }
@@ -58,6 +72,19 @@ export const COLLECTIONS = {
  * so existing collections keep their current numbering.
  */
 export async function nextSequence(collectionName) {
+  if (isPostgres()) {
+    // Atomic upsert into admin_counters
+    const res = await query(
+      `INSERT INTO admin_counters (counter_name, counter_value, updated_at)
+       VALUES ($1, (SELECT COALESCE(MAX(id), 0) + 1 FROM "${collectionName}"), NOW())
+       ON CONFLICT (counter_name) DO UPDATE 
+       SET counter_value = admin_counters.counter_value + 1, updated_at = NOW()
+       RETURNING counter_value`,
+      [collectionName]
+    );
+    return Number(res.rows[0].counter_value);
+  }
+
   const counters = col(COLLECTIONS.counters);
   const existing = await counters.findOne({ _id: collectionName });
   if (!existing) {

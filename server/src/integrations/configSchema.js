@@ -122,10 +122,32 @@ export function validateIntegrationConfig(input = {}) {
 
   // --- Endpoints ------------------------------------------------------------
   const e = input.endpoints || {};
-  cfg.endpoints = { report: { path: str(e.report?.path, 300), method: (e.report?.method || 'GET').toUpperCase() } };
+  const reportPath = str(e.report?.path, 300) || '/api/admin/dashboard';
+  cfg.endpoints = { report: { path: reportPath, method: (e.report?.method || 'GET').toUpperCase() } };
   const rp = validateEndpointPath(cfg.endpoints.report.path);
   if (rp) err('endpoints.report.path', rp);
   if (!HTTP_METHODS.includes(cfg.endpoints.report.method)) err('endpoints.report.method', 'Method must be GET or POST.');
+
+  // Health check endpoint (optional, defaults to /api/health)
+  const healthPath = str(e.health?.path, 300) || '/api/health';
+  cfg.endpoints.health = { path: healthPath, method: 'GET' };
+  const hp = validateEndpointPath(cfg.endpoints.health.path);
+  if (hp) err('endpoints.health.path', hp);
+
+  // Optional metric endpoint overrides
+  const optionalEndpoints = [
+    'total_subscribers', 'daily_subscribers', 'duration_subscribers',
+    'churn_subscribers', 'renewals', 'monthly_income'
+  ];
+  for (const opt of optionalEndpoints) {
+    if (e[opt]?.path) {
+      const p = str(e[opt].path, 300);
+      const valErr = validateEndpointPath(p);
+      if (valErr) err(`endpoints.${opt}.path`, valErr);
+      else cfg.endpoints[opt] = { path: p, method: (e[opt]?.method || 'GET').toUpperCase() };
+    }
+  }
+
   if (e.export?.path) {
     cfg.endpoints.export = { path: str(e.export.path, 300), method: (e.export.method || 'GET').toUpperCase(), page_size: intIn(e.export.page_size, 1, 5000, 500) };
     const xp = validateEndpointPath(cfg.endpoints.export.path);
@@ -139,14 +161,15 @@ export function validateIntegrationConfig(input = {}) {
   const seen = new Map();
   for (const key of Object.keys(REQUEST_PARAMS)) {
     const name = str(input.params?.[key], 64);
-    params[key] = name;
     if (!name) continue;
     if (!NAME_RE.test(name)) err(`params.${key}`, `Invalid parameter name '${name}'.`);
     if (seen.has(name)) err(`params.${key}`, `Parameter name '${name}' is already used for ${seen.get(name)}.`);
     seen.set(name, key);
+    params[key] = name;
   }
-  if (!params.from) err('params.from', 'Start date parameter name is required.');
-  if (!params.to) err('params.to', 'End date parameter name is required.');
+  // Default common parameter names if omitted
+  if (!params.from) params.from = 'fromDate';
+  if (!params.to) params.to = 'toDate';
   cfg.params = params;
 
   cfg.date_param_format = input.date_param_format || 'YYYY-MM-DD';
@@ -223,8 +246,43 @@ export function validateIntegrationConfig(input = {}) {
   if (typeof cfg.response.success_value === 'string') cfg.response.success_value = cfg.response.success_value.slice(0, 64);
   else if (!['boolean', 'number'].includes(typeof cfg.response.success_value)) cfg.response.success_value = true;
 
+  // --- Simple Field Mappings ------------------------------------------------
+  const fm = input.field_mappings || {};
+  cfg.field_mappings = {};
+  for (const [key, pathVal] of Object.entries(fm)) {
+    const path = str(pathVal, 200);
+    if (!path) continue;
+    if (!isValidPath(path)) {
+      err(`field_mappings.${key}`, `Invalid path '${path}'.`);
+      continue;
+    }
+    cfg.field_mappings[key] = path;
+  }
+
   // --- Field mappings -------------------------------------------------------
   cfg.mappings = { daily: {}, summary: {}, records: {} };
+
+  // Populate summary mappings from simple field_mappings if present
+  if (cfg.field_mappings.totalSubscribers) {
+    cfg.mappings.summary.subscriber_count = { path: cfg.field_mappings.totalSubscribers, type: 'integer' };
+    cfg.mappings.summary.active_subscribers = { path: cfg.field_mappings.totalSubscribers, type: 'integer' };
+  }
+  if (cfg.field_mappings.dailySubscribers) {
+    cfg.mappings.summary.new_subscribers = { path: cfg.field_mappings.dailySubscribers, type: 'integer' };
+  }
+  if (cfg.field_mappings.durationSubscribers) {
+    cfg.mappings.summary.duration_subscribers = { path: cfg.field_mappings.durationSubscribers, type: 'integer' };
+  }
+  if (cfg.field_mappings.churnSubscribers) {
+    cfg.mappings.summary.deactivations = { path: cfg.field_mappings.churnSubscribers, type: 'integer' };
+  }
+  if (cfg.field_mappings.renewals) {
+    cfg.mappings.summary.renewal_count = { path: cfg.field_mappings.renewals, type: 'integer' };
+  }
+  if (cfg.field_mappings.monthlyIncome) {
+    cfg.mappings.summary.grand_total = { path: cfg.field_mappings.monthlyIncome, type: 'decimal' };
+    cfg.mappings.summary.daily_revenue = { path: cfg.field_mappings.monthlyIncome, type: 'decimal' };
+  }
   for (const [group, defs] of Object.entries(FIELD_GROUPS)) {
     const supplied = input.mappings?.[group] || {};
     for (const [key, m] of Object.entries(supplied)) {

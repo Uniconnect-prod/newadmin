@@ -88,7 +88,11 @@ export function buildReportRequest(config, input, timezone = 'UTC') {
 
   for (const sp of config.static_params || []) query[sp.name] = sp.value;
 
-  const endpoint = (input.endpoint === 'export' && config.endpoints?.export) ? config.endpoints.export : config.endpoints.report;
+  let endpoint = (input.endpoint === 'export' && config.endpoints?.export) ? config.endpoints.export : config.endpoints.report;
+  if (input.metric && config.endpoints?.[input.metric]) {
+    const override = config.endpoints[input.metric];
+    endpoint = typeof override === 'string' ? { path: override, method: 'GET' } : override;
+  }
   const method = endpoint.method || 'GET';
   let url = `${config.base_url}${endpoint.path}`;
   let body;

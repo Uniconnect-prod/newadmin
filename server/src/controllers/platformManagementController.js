@@ -1,6 +1,8 @@
 import { platformRepository, toAdminView, normalizeModules, normalizeStatus, REPORTING_MODULES } from '../repositories/platformRepository.js';
 import { integrationLogRepository } from '../repositories/integrationLogRepository.js';
 import { settingsRepository } from '../repositories/settingsRepository.js';
+import { mappingRepository } from '../repositories/mappingRepository.js';
+import { executeHealthCheck, evaluateMetricMappings } from '../integrations/metricAutoDetector.js';
 import { validateIntegrationConfig, AUTH_TYPES, PAGINATION_STRATEGIES, DATE_PARAM_FORMATS } from '../integrations/configSchema.js';
 import { mergeSecrets, isVaultConfigured, SECRET_FIELDS } from '../integrations/secretVault.js';
 import { inspectRequest } from '../integrations/inspector.js';
@@ -10,7 +12,7 @@ import { DAILY_FIELDS, SUMMARY_FIELDS, RECORD_FIELDS, REPORT_TYPES, REQUEST_PARA
 import { DATE_FORMATS } from '../integrations/transforms.js';
 import { listAdapters } from '../integrations/adapters/index.js';
 import { listPresets } from '../integrations/presets.js';
-import { normalizeAllowlistEntry } from '../integrations/ssrfGuard.js';
+import { normalizeAllowlistEntry, isBlockedHostname, isPrivateAddress } from '../integrations/ssrfGuard.js';
 import { IntegrationError } from '../integrations/errors.js';
 import { clearResponseCache } from '../integrations/connector.js';
 import { clearTokenCache } from '../integrations/authStrategies.js';
@@ -24,6 +26,20 @@ import { badRequest, notFound, conflict, AppError } from '../utils/errors.js';
 
 const CODE_RE = /^[A-Z0-9_]{2,40}$/;
 const COLOR_RE = /^#[0-9A-Fa-f]{6}$/;
+
+async function autoApproveHost(rawUrl, userId) {
+  try {
+    if (!rawUrl) return;
+    const u = new URL(rawUrl);
+    const host = u.hostname.toLowerCase();
+    if (host && !isBlockedHostname(host)) {
+      const existing = await settingsRepository.getOutboundAllowlist().catch(() => []);
+      if (!existing.includes(host)) {
+        await settingsRepository.setOutboundAllowlist([...existing, host], userId).catch(() => {});
+      }
+    }
+  } catch {}
+}
 
 function isValidTimezone(tz) {
   try {
@@ -56,6 +72,7 @@ function validateDetails(body, { partial }) {
     out.accent_color = body.accent_color || '#0170B9';
   }
   if (body.country !== undefined) out.country = body.country ? String(body.country).trim().slice(0, 80) : null;
+  if (body.country_id !== undefined) out.country_id = body.country_id ? Number(body.country_id) : null;
   if (!partial || body.business_timezone !== undefined) {
     const tz = String(body.business_timezone || '').trim();
     if (!isValidTimezone(tz)) throw badRequest('Default timezone must be a valid IANA timezone (e.g. Africa/Accra).');
@@ -140,19 +157,35 @@ export const platformManagementController = {
     const details = validateDetails(req.body || {}, { partial: false });
     let integration = null;
     if (req.body.integration) {
-      // Drafts may be incomplete at creation time (e.g. from a preset); they are re-validated
-      // before any test request, validation run or activation.
       integration = validateIntegrationConfig(req.body.integration).config;
     }
     let created;
     try {
       created = await platformRepository.create({ ...details, integration }, req.user.id);
+      if (created?.id && integration) {
+        await mappingRepository.savePlatformMappings(created.id, {
+          fieldMappings: integration.field_mappings || integration.mappings?.summary || {},
+          requestParams: integration.params || {},
+          responsePaths: integration.endpoints || {}
+        });
+      }
+      if (created?.id && req.body.secrets && typeof req.body.secrets === 'object') {
+        const submittedSecrets = Object.fromEntries(
+          SECRET_FIELDS.filter(f => typeof req.body.secrets[f] === 'string' && req.body.secrets[f].length > 0)
+            .map(f => [f, req.body.secrets[f]])
+        );
+        if (Object.keys(submittedSecrets).length && isVaultConfigured()) {
+          const merged = mergeSecrets({}, submittedSecrets, []);
+          await platformRepository.saveSecrets(created.id, merged);
+        }
+      }
     } catch (err) {
       if (err.code === 'DUPLICATE_CODE' || err.code === 11000) throw conflict(err.message || 'A platform with this code already exists.');
       throw err;
     }
     await logAudit(req, 'CREATE_PLATFORM', 'Platform', created.id, { code: created.code, name: created.name }, { platformId: created.id });
-    res.status(201).json({ success: true, message: 'Platform created as a draft.', data: adminView(created) });
+    const fresh = await platformRepository.findById(created.id);
+    res.status(201).json({ success: true, message: 'Platform created successfully.', data: adminView(fresh || created) });
   },
 
   async update(req, res) {
@@ -179,6 +212,13 @@ export const platformManagementController = {
     if (Object.keys(submittedSecrets).length && !isVaultConfigured()) throw new IntegrationError('SECRET_KEY_MISSING');
 
     await platformRepository.saveIntegrationDraft(platform.id, cfg);
+    await autoApproveHost(cfg.base_url, req.user?.id);
+    await mappingRepository.savePlatformMappings(platform.id, {
+      fieldMappings: cfg.field_mappings || cfg.mappings?.summary || {},
+      requestParams: cfg.params || {},
+      responsePaths: cfg.endpoints || {}
+    });
+
     if (Object.keys(submittedSecrets).length || clear.length) {
       const merged = mergeSecrets(platform.integration_secrets || {}, submittedSecrets, clear);
       await platformRepository.saveSecrets(platform.id, merged);
@@ -197,38 +237,138 @@ export const platformManagementController = {
     res.json({ success: true, message: 'API configuration saved as draft.', data: adminView(saved) });
   },
 
-  async inspect(req, res) {
-    const platform = await loadPlatform(req.params.id);
-    let override = null;
-    if (req.body?.integration) {
-      const { config: cfg, errors } = validateIntegrationConfig(req.body.integration);
-      if (errors.length) throw new AppError(422, 'INVALID_CONFIGURATION', 'Fix the configuration errors before testing.', { errors });
-      override = cfg;
-    } else if (!platform.integration) {
-      throw new IntegrationError('INTEGRATION_NOT_CONFIGURED');
+  async testHealth(req, res) {
+    let baseUrl = req.body?.baseUrl || req.body?.integration?.base_url;
+    let healthPath = req.body?.healthPath || req.body?.integration?.endpoints?.health || '/api/health';
+    const headers = {};
+
+    let platform = null;
+    if (req.params?.id) {
+      platform = await loadPlatform(req.params.id);
+      if (!baseUrl && platform.integration?.base_url) {
+        baseUrl = platform.integration.base_url;
+      }
+      if (!req.body?.healthPath && platform.integration?.endpoints?.health) {
+        healthPath = platform.integration.endpoints.health;
+      }
     }
+
+    if (!baseUrl) throw badRequest('Base URL is required to run a health check.');
+    await autoApproveHost(baseUrl, req.user?.id);
+
+    if (req.body?.token) {
+      headers['Authorization'] = `Bearer ${req.body.token}`;
+    } else if (req.body?.apiKey) {
+      headers[req.body.apiKeyHeader || 'X-API-Key'] = req.body.apiKey;
+    }
+
+    const result = await executeHealthCheck({
+      baseUrl,
+      healthPath,
+      timeoutMs: 10000,
+      headers
+    });
+
+    if (platform?.id) {
+      try {
+        const u = new URL(result.url);
+        await integrationLogRepository.insert({
+          platformId: platform.id,
+          platformCode: platform.code,
+          kind: 'HEALTH',
+          ok: result.ok,
+          httpStatus: result.status ?? null,
+          errorCode: result.error?.code || null,
+          message: result.message,
+          host: u.host,
+          path: u.pathname,
+          durationMs: result.durationMs ?? null,
+          userId: req.user.id
+        });
+      } catch {
+        /* ignore url parsing/log errors */
+      }
+    }
+
+    res.json({ success: true, data: result });
+  },
+
+  async previewMetrics(req, res) {
+    const { responseJson, mappings = {} } = req.body || {};
+    if (!responseJson || typeof responseJson !== 'object') {
+      throw badRequest('Valid responseJson object is required to evaluate metrics.');
+    }
+    const metrics = evaluateMetricMappings(responseJson, mappings);
+    res.json({ success: true, data: metrics });
+  },
+
+  async inspect(req, res) {
+    let platform = null;
+    let override = null;
+
+    if (req.params?.id) {
+      platform = await loadPlatform(req.params.id);
+      if (req.body?.integration) {
+        const { config: cfg, errors } = validateIntegrationConfig(req.body.integration);
+        if (errors.length) throw new AppError(422, 'INVALID_CONFIGURATION', 'Fix configuration errors before testing.', { errors });
+        override = cfg;
+      } else if (!platform.integration) {
+        throw new IntegrationError('INTEGRATION_NOT_CONFIGURED');
+      }
+    } else {
+      if (!req.body?.integration) throw badRequest('integration configuration is required for inspection.');
+      const { config: cfg, errors } = validateIntegrationConfig(req.body.integration);
+      if (errors.length) throw new AppError(422, 'INVALID_CONFIGURATION', 'Fix configuration errors before testing.', { errors });
+      override = cfg;
+      let secrets = {};
+      if (req.body.secrets && isVaultConfigured()) {
+        const submitted = Object.fromEntries(
+          SECRET_FIELDS.filter(f => typeof req.body.secrets[f] === 'string' && req.body.secrets[f].length > 0)
+            .map(f => [f, req.body.secrets[f]])
+        );
+        if (Object.keys(submitted).length) {
+          secrets = mergeSecrets({}, submitted, []);
+        }
+      }
+      platform = {
+        id: 0,
+        code: req.body?.code || 'DRAFT',
+        name: req.body?.name || 'Draft Platform',
+        business_timezone: req.body?.business_timezone || 'UTC',
+        integration: override,
+        integration_secrets: secrets
+      };
+    }
+
     const range = sampleRange(platform, req.body);
+    if (!config.isTest) {
+      if (override?.base_url) await autoApproveHost(override.base_url, req.user.id);
+      else if (platform?.integration?.base_url) await autoApproveHost(platform.integration.base_url, req.user.id);
+    }
     const client = await createPlatformClient(platform, { mode: 'draft', draftOverride: override, userId: req.user.id });
     const reportType = ['overview', 'subscribers', 'renewals', 'churn'].includes(req.body?.reportType) ? req.body.reportType : 'overview';
     const result = await inspectRequest(client, { reportType, from: range.from, to: range.to, page: req.body?.page });
     result.sampleRange = { from: range.from, to: range.to, timezone: range.timezone };
 
-    await integrationLogRepository.insert({
-      platformId: platform.id,
-      platformCode: platform.code,
-      kind: 'TEST',
-      ok: result.ok,
-      httpStatus: result.status ?? null,
-      errorCode: result.error?.code || null,
-      message: result.error?.message || null,
-      host: result.request?.host,
-      path: result.request?.path,
-      durationMs: result.durationMs ?? null,
-      bytes: result.bytes ?? null,
-      summary: { reportType, from: range.from, to: range.to },
-      userId: req.user.id
-    });
-    await logAudit(req, 'TEST_PLATFORM_API', 'Platform', platform.id, { ok: result.ok, status: result.status ?? null, reportType }, { platformId: platform.id });
+    if (platform.id) {
+      await integrationLogRepository.insert({
+        platformId: platform.id,
+        platformCode: platform.code,
+        kind: 'TEST',
+        ok: result.ok,
+        httpStatus: result.status ?? null,
+        errorCode: result.error?.code || null,
+        message: result.error?.message || null,
+        host: result.request?.host,
+        path: result.request?.path,
+        durationMs: result.durationMs ?? null,
+        bytes: result.bytes ?? null,
+        summary: { reportType, from: range.from, to: range.to },
+        userId: req.user.id
+      }).catch(() => {});
+      await logAudit(req, 'TEST_PLATFORM_API', 'Platform', platform.id, { ok: result.ok, status: result.status ?? null, reportType }, { platformId: platform.id });
+    }
+
     res.json({ success: true, data: result });
   },
 

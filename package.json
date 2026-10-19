@@ -7,6 +7,9 @@
     "dev:client": "npm --prefix client run dev",
     "dev:server": "npm --prefix server run dev",
     "build": "npm --prefix client run build",
-    "test": "npm --prefix server test"
+    "test": "npm --prefix server test",
+    "db:init": "npm --prefix server run db:init",
+    "db:verify": "npm --prefix server run db:verify",
+    "setup:superadmin": "npm --prefix server run setup:superadmin"
   }
 }

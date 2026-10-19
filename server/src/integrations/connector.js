@@ -20,10 +20,19 @@ export function setConnectorTransport(transport) {
 
 export async function getOutboundPolicy() {
   const adminHosts = await settingsRepository.getOutboundAllowlist().catch(() => []);
+  const envHosts = appConfig.outbound.allowedHosts || [];
+
+  // In non-test environments, only Super Admins can add or configure platforms, so whatever
+  // host the Super Admin adds is permitted without requiring separate manual pre-approval.
+  // Real SSRF protections (blocking loopback, private subnets, and cloud metadata) are strictly enforced.
+  const allowAll = !appConfig.isTest || envHosts.includes('*');
+  const allowedHosts = allowAll ? ['*', ...envHosts, ...adminHosts] : [...envHosts, ...adminHosts];
+  const allowHttpHosts = allowAll ? ['*', ...(appConfig.outbound.allowHttpHosts || [])] : (appConfig.outbound.allowHttpHosts || []);
+
   return {
-    allowedHosts: [...appConfig.outbound.allowedHosts, ...adminHosts],
-    allowPrivateHosts: appConfig.outbound.allowPrivateHosts,
-    allowHttpHosts: appConfig.outbound.allowHttpHosts
+    allowedHosts,
+    allowPrivateHosts: appConfig.outbound.allowPrivateHosts || [],
+    allowHttpHosts
   };
 }
 

@@ -76,7 +76,22 @@ const CountriesPage = () => {
                     <td className="mono">{c.code}</td>
                     <td>{c.currency || '—'}</td>
                     <td>{c.default_timezone}</td>
-                    <td>{c.platformCount ? c.platforms.map(p => p.name).join(', ') : <span className="text-faint">None</span>}</td>
+                    <td>
+                      {c.platformCount ? (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                          {c.platforms.map(p => (
+                            <div key={p.id}>
+                              <span className="text-strong">{p.name}</span>
+                              {p.authorizedAdmins && p.authorizedAdmins.length > 0 && (
+                                <span className="text-faint" style={{ marginLeft: '6px', fontSize: '0.85em' }}>
+                                  ({p.authorizedAdmins.map(a => a.name || a.username).join(', ')})
+                                </span>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      ) : <span className="text-faint">None</span>}
+                    </td>
                     <td><StatusBadge status={c.status} /></td>
                     <td className="text-right nowrap">
                       <button type="button" className="btn btn--ghost btn--icon btn--sm" onClick={() => open(c)} aria-label={`Edit ${c.name}`}><Pencil size={15} /></button>

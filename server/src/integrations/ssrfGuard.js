@@ -100,6 +100,7 @@ export function hostMatches(entry, hostname, port) {
   const [patternHost, patternPort] = String(entry).toLowerCase().trim().split(/:(?=\d+$)/);
   const host = String(hostname).toLowerCase().replace(/^\[|\]$/g, '');
   if (patternPort && String(port) !== patternPort) return false;
+  if (patternHost === '*' || patternHost === '*:*') return true;
   if (patternHost.startsWith('*.')) {
     const suffix = patternHost.slice(1);
     return host.endsWith(suffix) && host.length > suffix.length;
@@ -110,6 +111,7 @@ export function hostMatches(entry, hostname, port) {
 export function normalizeAllowlistEntry(entry) {
   const value = String(entry || '').trim().toLowerCase();
   if (!value) return null;
+  if (value === '*' || value === '*:*') return value;
   if (!/^(\*\.)?[a-z0-9.-]+(:\d{1,5})?$/.test(value) && !/^\[?[0-9a-f:.]+\]?(:\d{1,5})?$/.test(value)) return null;
   return value;
 }
@@ -149,7 +151,8 @@ export function checkUrlPolicy(rawUrl, policy) {
       if (!listed(policy.allowedHosts)) throw new IntegrationError('HOST_NOT_APPROVED', `IP address ${hostname} is not on the approved host list.`);
     }
     const defaultPort = url.protocol === 'https:' ? 443 : 80;
-    if (port !== defaultPort && !(policy.allowedHosts || []).some(e => /:\d+$/.test(e) && hostMatches(e, hostname, port))) {
+    const hasWildcard = (policy.allowedHosts || []).some(e => e === '*' || e === '*:*');
+    if (port !== defaultPort && !hasWildcard && !(policy.allowedHosts || []).some(e => /:\d+$/.test(e) && hostMatches(e, hostname, port))) {
       throw new IntegrationError('BLOCKED_DESTINATION', `Non-standard port ${port} must be approved explicitly as ${hostname}:${port}.`);
     }
   }

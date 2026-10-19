@@ -8,7 +8,7 @@ import { logAudit } from '../middleware/auditLogger.js';
 import { badRequest, notFound, conflict } from '../utils/errors.js';
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-const USERNAME_RE = /^[A-Za-z0-9_.-]{3,50}$/;
+const USERNAME_RE = /^[A-Za-z0-9_.@-]{3,50}$/;
 export const MIN_PASSWORD_LENGTH = 10;
 
 async function validateAssignments(assignments) {

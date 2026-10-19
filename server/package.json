@@ -12,6 +12,9 @@
     "dev": "node --watch server.js",
     "dev:memory": "node --watch scripts/dev-memory.js",
     "mock:platform-api": "node scripts/mock-platform-api.js",
+    "db:init": "node scripts/init-fresh-db.js",
+    "db:verify": "node scripts/verify-e2e-pg.js",
+    "setup:superadmin": "node scripts/provision-superadmin.js",
     "test": "node --test --test-concurrency=1 \"test/*.test.js\""
   },
   "dependencies": {

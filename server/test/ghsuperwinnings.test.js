@@ -364,42 +364,56 @@ describe('GHSuperWinnings Reporting API Integration', () => {
   });
 
   describe('6. Verified Remote Upstream Behavior', () => {
-    test('confirms live upstream accepts Bearer auth header and dedicated /admin/export returns 404', async () => {
+    test('confirms live upstream accepts Bearer auth header and dedicated /admin/export returns 404', async (t) => {
       const policy = { allowedHosts: ['ghsuperwinnings.com'], allowPrivateHosts: false, allowHttpHosts: false };
 
-      // Test without token
-      const resNoToken = await safeRequest({
-        method: 'GET',
-        url: 'https://ghsuperwinnings.com/api/admin/dashboard',
-        timeoutMs: 15000
-      }, { policy });
-      assert.equal(resNoToken.status, 401);
-      const jsonNoToken = JSON.parse(resNoToken.body.toString('utf8'));
-      assert.equal(jsonNoToken.success, false);
-      assert.equal(jsonNoToken.message, 'No token provided');
+      try {
+        // Test without token
+        const resNoToken = await safeRequest({
+          method: 'GET',
+          url: 'https://ghsuperwinnings.com/api/admin/dashboard',
+          timeoutMs: 15000
+        }, { policy });
 
-      // Test with Bearer token
-      const resWithToken = await safeRequest({
-        method: 'GET',
-        url: 'https://ghsuperwinnings.com/api/admin/dashboard',
-        headers: { authorization: 'Bearer test_token' },
-        timeoutMs: 15000
-      }, { policy });
-      assert.equal(resWithToken.status, 401);
-      const jsonWithToken = JSON.parse(resWithToken.body.toString('utf8'));
-      assert.equal(jsonWithToken.success, false);
-      assert.equal(jsonWithToken.message, 'Invalid or expired token');
+        if (resNoToken.status === 502 || resNoToken.status === 503 || resNoToken.status === 504) {
+          t.skip(`Remote upstream returned HTTP ${resNoToken.status} (external server gateway issue)`);
+          return;
+        }
 
-      // Test dedicated /admin/export endpoint
-      const resExport = await safeRequest({
-        method: 'GET',
-        url: 'https://ghsuperwinnings.com/api/admin/export',
-        timeoutMs: 15000
-      }, { policy });
-      assert.equal(resExport.status, 404);
-      const jsonExport = JSON.parse(resExport.body.toString('utf8'));
-      assert.equal(jsonExport.success, false);
-      assert.equal(jsonExport.message, 'Not found');
+        assert.equal(resNoToken.status, 401);
+        const jsonNoToken = JSON.parse(resNoToken.body.toString('utf8'));
+        assert.equal(jsonNoToken.success, false);
+        assert.equal(jsonNoToken.message, 'No token provided');
+
+        // Test with Bearer token
+        const resWithToken = await safeRequest({
+          method: 'GET',
+          url: 'https://ghsuperwinnings.com/api/admin/dashboard',
+          headers: { authorization: 'Bearer test_token' },
+          timeoutMs: 15000
+        }, { policy });
+        assert.equal(resWithToken.status, 401);
+        const jsonWithToken = JSON.parse(resWithToken.body.toString('utf8'));
+        assert.equal(jsonWithToken.success, false);
+        assert.equal(jsonWithToken.message, 'Invalid or expired token');
+
+        // Test dedicated /admin/export endpoint
+        const resExport = await safeRequest({
+          method: 'GET',
+          url: 'https://ghsuperwinnings.com/api/admin/export',
+          timeoutMs: 15000
+        }, { policy });
+        assert.equal(resExport.status, 404);
+        const jsonExport = JSON.parse(resExport.body.toString('utf8'));
+        assert.equal(jsonExport.success, false);
+        assert.equal(jsonExport.message, 'Not found');
+      } catch (err) {
+        if (err.code === 'ECONNREFUSED' || err.code === 'ENOTFOUND' || err.code === 'ETIMEDOUT') {
+          t.skip(`Remote upstream unreachable: ${err.message}`);
+          return;
+        }
+        throw err;
+      }
     });
   });
 });

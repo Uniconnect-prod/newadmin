@@ -54,7 +54,7 @@ export const AuthProvider = ({ children }) => {
         next = fresh || null;
       }
       if (!next || next.isAll) {
-        next = platforms.find(p => p.code === 'GHSUPERWININGS' || p.code === 'GHSUPERWINNINGS') || platforms[0] || (isSuperAdmin ? allPlatformsScope(sessionStorage.getItem('selectedCountry')) : null);
+        next = platforms[0] || (isSuperAdmin ? allPlatformsScope(sessionStorage.getItem('selectedCountry')) : null);
       }
       session.write('platform', next);
       return next;

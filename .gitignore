@@ -55,16 +55,3 @@ Thumbs.db
 *.njsproj
 *.sln
 *.sw?
-
-# AI Agent & Assistant Files
-.claude/
-CLAUDE.md
-.cursor/
-.cursorrules
-.agents/
-AGENTS.md
-.gemini/
-GEMINI.md
-.windsurf/
-.cline/
-.roo/

@@ -104,5 +104,5 @@ export const PRESETS = [
 ];
 
 export function listPresets() {
-  return PRESETS;
+  return PRESETS.filter(p => p.id !== 'ghsuperwinnings');
 }

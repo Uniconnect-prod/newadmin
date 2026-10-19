@@ -1,6 +1,7 @@
 import { IntegrationError, classifyHttpStatus } from './errors.js';
 import { buildReportRequest } from './requestBuilder.js';
 import { normalizeResponse } from './normalizer.js';
+import { detectFieldMappings, evaluateMetricMappings } from './metricAutoDetector.js';
 
 /**
  * Safe response inspection for the "Test & inspect" step of the platform wizard.
@@ -162,6 +163,12 @@ export async function inspectRequest(client, { reportType = 'overview', from, to
   if (json !== null) {
     result.preview = sanitizePreview(json);
     result.structure = describeStructure(json);
+    result.detection = detectFieldMappings(json);
+    const activeMappings = {
+      ...(client.config.mappings?.summary || {}),
+      ...(client.config.field_mappings || {})
+    };
+    result.evaluatedMetrics = evaluateMetricMappings(json, activeMappings);
   }
 
   if (!errorCode && json !== null && !result.error) {
