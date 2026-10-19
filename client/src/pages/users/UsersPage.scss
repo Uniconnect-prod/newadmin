@@ -8,3 +8,9 @@
   display: grid; grid-template-columns: minmax(160px, 1.6fr) minmax(120px, 1fr) 140px 140px 110px auto; gap: $space-2; align-items: center;
   @include below($bp-md) { grid-template-columns: 1fr 1fr; padding: $space-3; border: 1px solid $border; border-radius: $radius-md; }
 }
+
+.access-window-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}

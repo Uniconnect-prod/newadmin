@@ -72,7 +72,7 @@ export const DataSourceBar = ({ dataSource, range, onRefresh, refreshing }) => {
   );
 };
 
-export const DateRangeFilter = ({ filters, setFilters }) => {
+export const DateRangeFilter = ({ filters, setFilters, minDate }) => {
   const [mode, setMode] = useState(filters.range);
   const [from, setFrom] = useState(filters.from || '');
   const [to, setTo] = useState(filters.to || '');
@@ -81,7 +81,7 @@ export const DateRangeFilter = ({ filters, setFilters }) => {
     setFrom(filters.from || '');
     setTo(filters.to || '');
   }, [filters.range, filters.from, filters.to]);
-  const invalid = from && to && from > to;
+  const invalid = (from && to && from > to) || (minDate && from && from < minDate);
   const onSelect = (value) => {
     setMode(value);
     // Custom ranges are applied only once both dates are chosen.
@@ -94,9 +94,9 @@ export const DateRangeFilter = ({ filters, setFilters }) => {
       </select>
       {mode === 'custom' && (
         <form className="date-filter__custom" onSubmit={e => { e.preventDefault(); if (from && to && !invalid) setFilters({ range: 'custom', from, to }); }}>
-          <input type="date" className="input input--sm" value={from} onChange={e => setFrom(e.target.value)} aria-label="Start date" max={to || undefined} />
+          <input type="date" className="input input--sm" value={from} min={minDate || undefined} onChange={e => setFrom(e.target.value)} aria-label="Start date" max={to || undefined} />
           <span className="text-faint">to</span>
-          <input type="date" className="input input--sm" value={to} onChange={e => setTo(e.target.value)} aria-label="End date" min={from || undefined} />
+          <input type="date" className="input input--sm" value={to} onChange={e => setTo(e.target.value)} aria-label="End date" min={from || minDate || undefined} />
           <button type="submit" className="btn btn--primary btn--sm" disabled={!from || !to || invalid}>Apply</button>
         </form>
       )}

@@ -28,17 +28,23 @@ const STATUS_OPTIONS = [
 ];
 
 export const OverviewPage = () => {
-  const { activePlatform } = useAuth();
+  const { activePlatform, user } = useAuth();
   const toast = useToast();
 
+  const minDate = user?.isSuperAdmin ? null : (activePlatform?.access?.start_date?.slice(0, 10) || user?.access_start_date?.slice(0, 10));
+  const getInitialFrom = () => {
+    const start = getMonthStart();
+    return minDate && start < minDate ? minDate : start;
+  };
+
   // Filter input states
-  const [fromDate, setFromDate] = useState(getMonthStart);
+  const [fromDate, setFromDate] = useState(getInitialFrom);
   const [toDate, setToDate] = useState(getToday);
   const [status, setStatus] = useState('all');
 
   // Applied filter state (triggers fetch)
   const [appliedFilters, setAppliedFilters] = useState(() => ({
-    from: getMonthStart(),
+    from: getInitialFrom(),
     to: getToday(),
     status: 'all'
   }));
@@ -135,6 +141,10 @@ export const OverviewPage = () => {
   // Apply Filter button handler
   const handleApplyFilter = (e) => {
     e?.preventDefault();
+    if (minDate && fromDate < minDate) {
+      toast.error(`Your account cannot access data before ${minDate}.`);
+      return;
+    }
     setPage(1);
     setAppliedFilters({ from: fromDate, to: toDate, status });
   };
@@ -269,6 +279,7 @@ export const OverviewPage = () => {
               <input
                 id="gh-from"
                 type="date"
+                min={minDate || undefined}
                 value={fromDate}
                 onChange={e => setFromDate(e.target.value)}
                 required
@@ -280,6 +291,7 @@ export const OverviewPage = () => {
               <input
                 id="gh-to"
                 type="date"
+                min={fromDate || minDate || undefined}
                 value={toDate}
                 onChange={e => setToDate(e.target.value)}
                 required

@@ -56,6 +56,8 @@ async function withAccess(users, visiblePlatformIds = null) {
       status: u.status,
       country: u.country || null,
       is_super_admin: Boolean(u.is_super_admin || u.id === 1),
+      access_start_date: u.access_start_date || null,
+      access_end_date: u.access_end_date || null,
       last_login_at: u.last_login_at || null,
       created_at: u.created_at || null,
       roles: roleNames,
@@ -83,6 +85,11 @@ export const userController = {
   },
 
   async getAllUsers(req, res) {
+    try {
+      await userRepository.cleanupExpiredUsers();
+    } catch (err) {
+      console.warn('[Users] Expired user cleanup error:', err.message);
+    }
     const users = await userRepository.list();
     if (req.user.isSuperAdmin) {
       return res.json({ success: true, data: await withAccess(users) });
@@ -101,11 +108,36 @@ export const userController = {
   },
 
   async createUser(req, res) {
-    const { name, email, username, password, status, country } = req.body || {};
+    const { name, email, username, password, status, country, access_start_date, access_end_date } = req.body || {};
     validateProfile({ name, email, username });
     if (typeof password !== 'string' || password.length < MIN_PASSWORD_LENGTH) throw badRequest(`Password must be at least ${MIN_PASSWORD_LENGTH} characters.`);
     if (await userRepository.existsWithEmailOrUsername(email.trim(), username.trim())) throw conflict('A user with this email or username already exists.');
     const assignments = (await validateAssignments(req.body.platform_assignments)) || [];
+
+    let finalStartDate = null;
+    let finalEndDate = null;
+    if (access_start_date) {
+      const d = new Date(access_start_date);
+      if (Number.isNaN(d.getTime())) throw badRequest('Access start date is invalid.');
+      finalStartDate = d;
+    }
+    if (access_end_date) {
+      const d = new Date(access_end_date);
+      if (Number.isNaN(d.getTime())) throw badRequest('Access end date is invalid.');
+      finalEndDate = d;
+    }
+    if (finalStartDate && finalEndDate && finalStartDate > finalEndDate) {
+      throw badRequest('Access start date must not be after access end date.');
+    }
+
+    if (!finalStartDate && assignments.length > 0) {
+      const minAssignStart = assignments.map(a => a.start_date).sort((a, b) => a - b)[0];
+      if (minAssignStart) finalStartDate = minAssignStart;
+    }
+    if (!finalEndDate && assignments.length > 0) {
+      const maxAssignEnd = assignments.map(a => a.end_date).sort((a, b) => b - a)[0];
+      if (maxAssignEnd) finalEndDate = maxAssignEnd;
+    }
 
     const created = await userRepository.create({
       name: name.trim(),
@@ -113,7 +145,9 @@ export const userController = {
       username: username.trim(),
       password_hash: await bcrypt.hash(password, 12),
       status: status === 'INACTIVE' ? 'INACTIVE' : 'ACTIVE',
-      country: country ? String(country).trim().slice(0, 80) : null
+      country: country ? String(country).trim().slice(0, 80) : null,
+      access_start_date: finalStartDate,
+      access_end_date: finalEndDate
     });
     await accessRepository.replaceForUser(created.id, assignments, req.user.id);
     await logAudit(req, 'CREATE_USER', 'User', created.id, { username: created.username, assignments: assignments.length }, { platformId: null });
@@ -125,7 +159,7 @@ export const userController = {
     const id = parseInt(req.params.id, 10);
     const existing = await userRepository.findById(id);
     if (!existing) throw notFound('User not found.');
-    const { name, email, username, status, country } = req.body || {};
+    const { name, email, username, status, country, access_start_date, access_end_date } = req.body || {};
     validateProfile({ name, email, username }, { partial: true });
     if (status !== undefined && !['ACTIVE', 'INACTIVE'].includes(status)) throw badRequest('Status must be ACTIVE or INACTIVE.');
     if (id === req.user.id && status === 'INACTIVE') throw badRequest('You cannot deactivate your own account.');
@@ -133,6 +167,33 @@ export const userController = {
       && await userRepository.existsWithEmailOrUsername((email ?? existing.email).trim(), (username ?? existing.username).trim(), id)) {
       throw conflict('Another user already has this email or username.');
     }
+
+    let finalStartDate = undefined;
+    let finalEndDate = undefined;
+    if (access_start_date !== undefined) {
+      if (access_start_date === null || access_start_date === '') {
+        finalStartDate = null;
+      } else {
+        const d = new Date(access_start_date);
+        if (Number.isNaN(d.getTime())) throw badRequest('Access start date is invalid.');
+        finalStartDate = d;
+      }
+    }
+    if (access_end_date !== undefined) {
+      if (access_end_date === null || access_end_date === '') {
+        finalEndDate = null;
+      } else {
+        const d = new Date(access_end_date);
+        if (Number.isNaN(d.getTime())) throw badRequest('Access end date is invalid.');
+        finalEndDate = d;
+      }
+    }
+    const checkStart = finalStartDate !== undefined ? finalStartDate : (existing.access_start_date ? new Date(existing.access_start_date) : null);
+    const checkEnd = finalEndDate !== undefined ? finalEndDate : (existing.access_end_date ? new Date(existing.access_end_date) : null);
+    if (checkStart && checkEnd && checkStart > checkEnd) {
+      throw badRequest('Access start date must not be after access end date.');
+    }
+
     const assignments = await validateAssignments(req.body.platform_assignments);
 
     await userRepository.update(id, {
@@ -140,7 +201,9 @@ export const userController = {
       email: email?.trim().toLowerCase(),
       username: username?.trim(),
       status,
-      country: country === undefined ? undefined : (country ? String(country).trim().slice(0, 80) : null)
+      country: country === undefined ? undefined : (country ? String(country).trim().slice(0, 80) : null),
+      access_start_date: finalStartDate,
+      access_end_date: finalEndDate
     });
     if (assignments) await accessRepository.replaceForUser(id, assignments, req.user.id);
     if (status === 'INACTIVE') await tokenRepository.revokeAllForUser(id);
@@ -165,10 +228,8 @@ export const userController = {
     if (id === req.user.id) throw badRequest('You cannot delete your own account.');
     const existing = await userRepository.findById(id);
     if (!existing) throw notFound('User not found.');
-    await userRepository.softDelete(id);
-    await accessRepository.revokeAllForUser(id);
-    await tokenRepository.revokeAllForUser(id);
+    await userRepository.deletePermanently(id);
     await logAudit(req, 'DELETE_USER', 'User', id, { username: existing.username }, { platformId: null });
-    res.json({ success: true, message: 'User removed and access revoked.' });
+    res.json({ success: true, message: 'User permanently removed from the database.' });
   }
 };

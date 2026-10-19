@@ -18,8 +18,15 @@ export function requestSignal(req, res) {
   return controller.signal;
 }
 
-function rangeQuery(q) {
-  return { range: q.range || undefined, from: q.from || undefined, to: q.to || undefined };
+function userMinStartDate(req) {
+  if (req.user?.isSuperAdmin) return null;
+  const start = req.platformAccess?.start_date || req.user?.access_start_date;
+  return start ? String(start).slice(0, 10) : null;
+}
+
+function rangeQuery(q, req) {
+  const minDate = userMinStartDate(req);
+  return { range: q.range || undefined, from: q.from || undefined, to: q.to || undefined, minStartDate: minDate || undefined };
 }
 
 function requireModule(platform, module) {
@@ -30,16 +37,17 @@ function requireModule(platform, module) {
 
 export const reportController = {
   async overview(req, res) {
-    const ctx = { userId: req.user.id, signal: requestSignal(req, res), fresh: req.query.fresh === '1' };
+    const minStartDate = userMinStartDate(req);
+    const ctx = { userId: req.user.id, signal: requestSignal(req, res), fresh: req.query.fresh === '1', minStartDate };
     if (req.activePlatform.isAll) {
       let platforms = await platformRepository.listActive();
       if (req.activePlatform.country) {
         platforms = platforms.filter(p => (p.country || '').toLowerCase() === req.activePlatform.country.toLowerCase());
       }
-      const data = await getConsolidatedOverview(platforms, rangeQuery(req.query), ctx);
+      const data = await getConsolidatedOverview(platforms, rangeQuery(req.query, req), ctx);
       return res.json({ success: true, data });
     }
-    const data = await getSection(req.activePlatform, 'overview', rangeQuery(req.query), ctx);
+    const data = await getSection(req.activePlatform, 'overview', rangeQuery(req.query, req), ctx);
     return res.json({ success: true, data });
   },
 
@@ -47,20 +55,24 @@ export const reportController = {
     const section = req.params.section;
     if (!SECTION_MODULES[section]) throw new AppError(404, 'NOT_FOUND', 'Unknown report.');
     requireModule(req.activePlatform, SECTION_MODULES[section]);
-    const data = await getSection(req.activePlatform, section, rangeQuery(req.query), {
+    const minStartDate = userMinStartDate(req);
+    const data = await getSection(req.activePlatform, section, rangeQuery(req.query, req), {
       userId: req.user.id,
       signal: requestSignal(req, res),
-      fresh: req.query.fresh === '1'
+      fresh: req.query.fresh === '1',
+      minStartDate
     });
     res.json({ success: true, data });
   },
 
   async settlement(req, res) {
     requireModule(req.activePlatform, 'settlement');
-    const data = await getSettlementReport(req.activePlatform, rangeQuery(req.query), {
+    const minStartDate = userMinStartDate(req);
+    const data = await getSettlementReport(req.activePlatform, rangeQuery(req.query, req), {
       userId: req.user.id,
       signal: requestSignal(req, res),
-      fresh: req.query.fresh === '1'
+      fresh: req.query.fresh === '1',
+      minStartDate
     });
     res.json({ success: true, data });
   },
@@ -72,14 +84,15 @@ export const reportController = {
     const search = typeof req.query.search === 'string' ? req.query.search.trim().slice(0, 40) : undefined;
     if (search && !/^[0-9+\s-]{3,40}$/.test(search)) throw new AppError(400, 'VALIDATION_ERROR', 'Search accepts phone numbers (digits, +, -, spaces).');
     const status = typeof req.query.status === 'string' && /^[A-Za-z_-]{1,30}$/.test(req.query.status) ? req.query.status : undefined;
+    const minStartDate = userMinStartDate(req);
     const data = await getRecordsPage(req.activePlatform, {
       reportType,
-      ...rangeQuery(req.query),
+      ...rangeQuery(req.query, req),
       page: req.query.page,
       pageSize: req.query.pageSize,
       search: search ? search.replace(/[\s+-]/g, '') : undefined,
       status
-    }, { userId: req.user.id, signal: requestSignal(req, res) });
+    }, { userId: req.user.id, signal: requestSignal(req, res), minStartDate });
     res.json({ success: true, data });
   },
 

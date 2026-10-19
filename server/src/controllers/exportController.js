@@ -16,8 +16,15 @@ function send(res, { csv, filename, meta }) {
   res.status(200).send(csv);
 }
 
-function rangeQuery(q) {
-  return { range: q.range || undefined, from: q.from || undefined, to: q.to || undefined };
+function userMinStartDate(req) {
+  if (req.user?.isSuperAdmin) return null;
+  const start = req.platformAccess?.start_date || req.user?.access_start_date;
+  return start ? String(start).slice(0, 10) : null;
+}
+
+function rangeQuery(q, req) {
+  const minDate = userMinStartDate(req);
+  return { range: q.range || undefined, from: q.from || undefined, to: q.to || undefined, minStartDate: minDate || undefined };
 }
 
 export const exportController = {
@@ -26,7 +33,8 @@ export const exportController = {
       throw new AppError(404, 'MODULE_DISABLED', 'The settlement report is not enabled for this platform.');
     }
     const view = req.query.view === 'transactions' ? 'transactions' : 'revenue';
-    const result = await exportSettlementCsv(req.activePlatform, rangeQuery(req.query), { view, userId: req.user.id, signal: requestSignal(req, res) });
+    const minStartDate = userMinStartDate(req);
+    const result = await exportSettlementCsv(req.activePlatform, rangeQuery(req.query, req), { view, userId: req.user.id, signal: requestSignal(req, res), minStartDate });
     await logAudit(req, 'EXPORT_SETTLEMENT_CSV', 'Report', null, { view, rows: result.meta.rows, file: result.filename });
     send(res, result);
   },
@@ -39,7 +47,8 @@ export const exportController = {
       throw new AppError(404, 'MODULE_DISABLED', 'This export is not enabled for this platform.');
     }
     const search = typeof req.query.search === 'string' && /^[0-9+\s-]{3,40}$/.test(req.query.search.trim()) ? req.query.search.trim().replace(/[\s+-]/g, '') : undefined;
-    const result = await exportRecordsCsv(req.activePlatform, { reportType, ...rangeQuery(req.query), search }, { userId: req.user.id, signal: requestSignal(req, res) });
+    const minStartDate = userMinStartDate(req);
+    const result = await exportRecordsCsv(req.activePlatform, { reportType, ...rangeQuery(req.query, req), search, minStartDate }, { userId: req.user.id, signal: requestSignal(req, res), minStartDate });
     await logAudit(req, 'EXPORT_RECORDS_CSV', 'Report', null, { reportType, rows: result.meta.rows, complete: result.meta.complete, file: result.filename });
     send(res, result);
   }

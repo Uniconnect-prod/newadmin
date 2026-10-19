@@ -15,7 +15,17 @@ async function issueTokens(userId, familyId) {
 }
 
 function profile(user, isSuperAdmin, activeRole) {
-  return { id: user.id, name: user.name, email: user.email, username: user.username, country: user.country || null, isSuperAdmin, activeRole };
+  return {
+    id: user.id,
+    name: user.name,
+    email: user.email,
+    username: user.username,
+    country: user.country || null,
+    isSuperAdmin,
+    activeRole,
+    access_start_date: user.access_start_date ? String(user.access_start_date).slice(0, 10) : null,
+    access_end_date: user.access_end_date ? String(user.access_end_date).slice(0, 10) : null
+  };
 }
 
 function loginDenial(evaluated) {
@@ -46,10 +56,40 @@ export const authController = {
       return res.status(403).json({ success: false, code: 'ACCOUNT_INACTIVE', message: 'This account has been disabled. Please contact an administrator.' });
     }
 
+    // Date-wise access enforcement for non-super-admin users
+    if (!user.is_super_admin && user.id !== 1) {
+      const now = new Date();
+      if (user.access_end_date && now >= new Date(user.access_end_date)) {
+        await userRepository.deletePermanently(user.id);
+        await logAudit(req, 'USER_EXPIRED_PURGED', 'User', user.id, { username: user.username });
+        return res.status(403).json({ success: false, code: 'ACCOUNT_EXPIRED', message: 'Your account access period has ended and this account has been removed.' });
+      }
+
+      if (user.access_start_date && now < new Date(user.access_start_date)) {
+        const startDay = new Date(user.access_start_date).toISOString().slice(0, 10);
+        return res.status(403).json({ success: false, code: 'ACCOUNT_NOT_STARTED', message: `Your account access has not started yet. Access begins on ${startDay}.` });
+      }
+    }
+
     const { evaluated, isSuperAdmin, available } = await evaluateUserAccess(user);
-    if (!isSuperAdmin && available.length === 0) {
-      const denial = loginDenial(evaluated);
-      return res.status(403).json({ success: false, ...denial });
+    if (!isSuperAdmin) {
+      const now = new Date();
+      if (evaluated.length > 0 && evaluated.every(a => a.status === 'EXPIRED')) {
+        await userRepository.deletePermanently(user.id);
+        await logAudit(req, 'USER_EXPIRED_PURGED', 'User', user.id, { username: user.username });
+        return res.status(403).json({ success: false, code: 'ACCOUNT_EXPIRED', message: 'Your platform access period has ended and this account has been removed.' });
+      }
+
+      if (evaluated.length > 0 && evaluated.every(a => a.status === 'UPCOMING')) {
+        const earliest = evaluated.map(a => new Date(a.start_date)).sort((a, b) => a - b)[0];
+        const startDay = earliest ? earliest.toISOString().slice(0, 10) : '';
+        return res.status(403).json({ success: false, code: 'PLATFORM_ACCESS_UPCOMING', message: `Your platform access has not started yet. Access begins on ${startDay}.` });
+      }
+
+      if (available.length === 0) {
+        const denial = loginDenial(evaluated);
+        return res.status(403).json({ success: false, ...denial });
+      }
     }
 
     const tokens = await issueTokens(user.id);
@@ -98,6 +138,19 @@ export const authController = {
     if (!user || user.status !== 'ACTIVE') {
       await tokenRepository.revokeFamily(record.family_id);
       return res.status(401).json({ success: false, code: 'ACCOUNT_INACTIVE', message: 'Your account is not active.' });
+    }
+
+    if (!user.is_super_admin && user.id !== 1) {
+      const now = new Date();
+      if (user.access_end_date && now >= new Date(user.access_end_date)) {
+        await userRepository.deletePermanently(user.id);
+        await tokenRepository.revokeFamily(record.family_id);
+        return res.status(401).json({ success: false, code: 'ACCOUNT_EXPIRED', message: 'Your account access period has ended and this account has been removed.' });
+      }
+      if (user.access_start_date && now < new Date(user.access_start_date)) {
+        await tokenRepository.revokeFamily(record.family_id);
+        return res.status(403).json({ success: false, code: 'ACCOUNT_NOT_STARTED', message: 'Your account access has not started yet.' });
+      }
     }
 
     const tokens = await issueTokens(user.id, record.family_id);

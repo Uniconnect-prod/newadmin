@@ -12,12 +12,30 @@ import { csvCell, toCsv, safeFilenamePart } from '../utils/csv.js';
  * (no partial files presented as complete).
  */
 
-export async function exportSettlementCsv(platform, query, { view = 'revenue', userId, signal } = {}) {
+export async function exportSettlementCsv(platform, query, { view = 'revenue', userId, signal, minStartDate } = {}) {
   const client = await createPlatformClient(platform, { mode: 'published', userId });
   const caps = describeCapabilities(client.config);
   if (!caps.modules.settlement) throw new IntegrationError('UNSUPPORTED_REPORT', 'The settlement report is not available for this platform.');
   const range = resolveRange(query, client.timezone, client.config.default_range_days);
+  const minDate = minStartDate || query?.minStartDate;
+
+  if (minDate) {
+    if (range.to < minDate) {
+      return {
+        csv: '',
+        filename: `${safeFilenamePart(platform.code)}_settlement_${view}_${range.from}_${range.to}.csv`,
+        meta: { rows: 0, complete: true, pages: 0 }
+      };
+    }
+    if (range.from < minDate) {
+      range.from = minDate;
+    }
+  }
+
   const snapshot = await client.fetchSnapshot({ from: range.from, to: range.to, signal, fresh: true });
+  if (minDate && snapshot.daily?.rows?.length) {
+    snapshot.daily.rows = snapshot.daily.rows.filter(r => r.report_date >= minDate);
+  }
   const settlement = buildSettlement(snapshot, client.config);
   const decimals = client.config.currency_decimals ?? 2;
   const currency = platform.currency ? ` (${platform.currency})` : '';
@@ -41,11 +59,26 @@ export async function exportSettlementCsv(platform, query, { view = 'revenue', u
   };
 }
 
-export async function exportRecordsCsv(platform, { reportType, search, status, ...query }, { userId, signal } = {}) {
+export async function exportRecordsCsv(platform, { reportType, search, status, minStartDate, ...query }, { userId, signal, minStartDate: ctxMinDate } = {}) {
   const client = await createPlatformClient(platform, { mode: 'published', userId });
   const caps = describeCapabilities(client.config);
   if (!caps.recordReports[reportType]) throw new IntegrationError('UNSUPPORTED_REPORT', `Record-level '${reportType}' data is not configured for this platform.`);
   const range = resolveRange(query, client.timezone, client.config.default_range_days);
+  const minDate = minStartDate || ctxMinDate;
+
+  if (minDate) {
+    if (range.to < minDate) {
+      return {
+        csv: '',
+        filename: `${safeFilenamePart(platform.code)}_${reportType}_${range.from}_${range.to}.csv`,
+        meta: { rows: 0, pages: 0, duplicatesSkipped: 0, reportedTotal: 0, complete: true }
+      };
+    }
+    if (range.from < minDate) {
+      range.from = minDate;
+    }
+  }
+
   const collected = await client.collectRecords({
     reportType,
     from: range.from,
@@ -54,6 +87,10 @@ export async function exportRecordsCsv(platform, { reportType, search, status, .
     status: client.config.params?.status ? status : undefined,
     signal
   });
+
+  if (minDate && collected.rows?.length) {
+    collected.rows = collected.rows.filter(r => !r.date || r.date >= minDate);
+  }
   const keys = Object.keys(client.config.mappings.records || {});
   const decimals = client.config.currency_decimals ?? 2;
   const header = keys.map(k => (k === 'amount' && platform.currency ? `${RECORD_FIELDS[k].label} (${platform.currency})` : RECORD_FIELDS[k].label));

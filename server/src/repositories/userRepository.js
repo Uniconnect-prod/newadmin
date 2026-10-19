@@ -17,6 +17,8 @@ function shapeUser(row) {
     status: row.status,
     country: row.country || null,
     is_super_admin: Boolean(row.is_super_admin),
+    access_start_date: row.access_start_date ? new Date(row.access_start_date).toISOString() : null,
+    access_end_date: row.access_end_date ? new Date(row.access_end_date).toISOString() : null,
     created_at: row.created_at ? new Date(row.created_at).toISOString() : null,
     updated_at: row.updated_at ? new Date(row.updated_at).toISOString() : null,
     last_login_at: row.last_login_at ? new Date(row.last_login_at).toISOString() : null,
@@ -31,6 +33,7 @@ export const userRepository = {
     if (isPostgres()) {
       const sql = `
         SELECT id, username, email, password_hash, status, is_super_admin, name, country,
+               access_start_date, access_end_date,
                created_at, updated_at, last_login_at, deleted_at, backup_password_hash
         FROM admin_users
         WHERE (LOWER(username) = LOWER($1) OR LOWER(email) = LOWER($1))
@@ -52,6 +55,7 @@ export const userRepository = {
     if (isPostgres()) {
       const sql = `
         SELECT id, username, email, status, is_super_admin, name, country,
+               access_start_date, access_end_date,
                created_at, updated_at, last_login_at, deleted_at
                ${includePassword ? ', password_hash, backup_password_hash' : ''}
         FROM admin_users
@@ -68,6 +72,7 @@ export const userRepository = {
     if (isPostgres()) {
       const sql = `
         SELECT id, username, email, status, is_super_admin, name, country,
+               access_start_date, access_end_date,
                created_at, updated_at, last_login_at, deleted_at
         FROM admin_users
         WHERE deleted_at IS NULL
@@ -101,14 +106,14 @@ export const userRepository = {
     return Boolean(found && found.id !== excludeId);
   },
 
-  async create({ name, email, username, password_hash, status = 'ACTIVE', country = null, is_super_admin = false }) {
+  async create({ name, email, username, password_hash, status = 'ACTIVE', country = null, is_super_admin = false, access_start_date = null, access_end_date = null }) {
     if (isPostgres()) {
       const sql = `
-        INSERT INTO admin_users (name, email, username, password_hash, status, country, is_super_admin, created_at, updated_at)
-        VALUES ($1, LOWER($2), $3, $4, $5, $6, $7, NOW(), NOW())
-        RETURNING id, name, email, username, status, country, is_super_admin, created_at, updated_at, last_login_at, deleted_at;
+        INSERT INTO admin_users (name, email, username, password_hash, status, country, is_super_admin, access_start_date, access_end_date, created_at, updated_at)
+        VALUES ($1, LOWER($2), $3, $4, $5, $6, $7, $8, $9, NOW(), NOW())
+        RETURNING id, name, email, username, status, country, is_super_admin, access_start_date, access_end_date, created_at, updated_at, last_login_at, deleted_at;
       `;
-      const res = await query(sql, [name, email, username, password_hash, status, country, Boolean(is_super_admin)]);
+      const res = await query(sql, [name, email, username, password_hash, status, country, Boolean(is_super_admin), access_start_date ? new Date(access_start_date) : null, access_end_date ? new Date(access_end_date) : null]);
       const created = shapeUser(res.rows[0]);
 
       if (is_super_admin) {
@@ -131,6 +136,8 @@ export const userRepository = {
       status,
       country,
       is_super_admin: Boolean(is_super_admin),
+      access_start_date: access_start_date ? new Date(access_start_date).toISOString() : null,
+      access_end_date: access_end_date ? new Date(access_end_date).toISOString() : null,
       last_login_at: null,
       created_at: now,
       updated_at: now,
@@ -146,13 +153,16 @@ export const userRepository = {
     if (!Number.isFinite(idNum)) return null;
 
     if (isPostgres()) {
-      const allowed = ['name', 'email', 'username', 'status', 'country', 'is_super_admin'];
+      const allowed = ['name', 'email', 'username', 'status', 'country', 'is_super_admin', 'access_start_date', 'access_end_date'];
       const setClauses = ['updated_at = NOW()'];
       const params = [idNum];
 
       for (const key of allowed) {
         if (fields[key] !== undefined) {
-          params.push(key === 'email' ? String(fields[key]).toLowerCase() : fields[key]);
+          let val = fields[key];
+          if (key === 'email') val = String(val).toLowerCase();
+          else if (key === 'access_start_date' || key === 'access_end_date') val = val ? new Date(val) : null;
+          params.push(val);
           setClauses.push(`"${key}" = $${params.length}`);
         }
       }
@@ -173,7 +183,7 @@ export const userRepository = {
       return this.findById(idNum);
     }
 
-    const allowed = ['name', 'email', 'username', 'status', 'country', 'is_super_admin'];
+    const allowed = ['name', 'email', 'username', 'status', 'country', 'is_super_admin', 'access_start_date', 'access_end_date'];
     const set = { updated_at: new Date() };
     for (const key of allowed) if (fields[key] !== undefined) set[key] = fields[key];
     await users().updateOne({ id: idNum, deleted_at: null }, { $set: set });
@@ -206,6 +216,57 @@ export const userRepository = {
     }
     const now = new Date();
     await users().updateOne({ id: idNum }, { $set: { deleted_at: now, status: 'INACTIVE', updated_at: now } });
+  },
+
+  async deletePermanently(id) {
+    const idNum = parseInt(id, 10);
+    if (!Number.isFinite(idNum)) return;
+    if (isPostgres()) {
+      await query(`DELETE FROM admin_users WHERE id = $1;`, [idNum]);
+      return;
+    }
+    await users().deleteOne({ id: idNum });
+    await col(COLLECTIONS.access).deleteMany({ user_id: idNum });
+  },
+
+  async cleanupExpiredUsers() {
+    if (isPostgres()) {
+      const sql = `
+        DELETE FROM admin_users
+        WHERE is_super_admin = FALSE
+          AND (
+            (access_end_date IS NOT NULL AND access_end_date <= NOW())
+            OR (
+              id IN (
+                SELECT a.admin_id
+                FROM admin_platform_access a
+                GROUP BY a.admin_id
+                HAVING MAX(a.end_date) <= NOW()
+              )
+            )
+          )
+        RETURNING id, username;
+      `;
+      const res = await query(sql);
+      return res.rows;
+    }
+
+    const now = new Date();
+    const allUsers = await users().find({ is_super_admin: false }).toArray();
+    const removed = [];
+    for (const u of allUsers) {
+      if (u.access_end_date && new Date(u.access_end_date) <= now) {
+        await this.deletePermanently(u.id);
+        removed.push(u);
+      } else {
+        const userAccess = await col(COLLECTIONS.access).find({ user_id: u.id }).toArray();
+        if (userAccess.length > 0 && userAccess.every(a => new Date(a.end_date) <= now)) {
+          await this.deletePermanently(u.id);
+          removed.push(u);
+        }
+      }
+    }
+    return removed;
   },
 
   async namesByIds(ids) {

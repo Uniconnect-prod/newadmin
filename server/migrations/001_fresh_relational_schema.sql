@@ -19,6 +19,8 @@ CREATE TABLE IF NOT EXISTS admin_users (
   is_super_admin BOOLEAN NOT NULL DEFAULT FALSE,
   name VARCHAR(150),
   country VARCHAR(100),
+  access_start_date TIMESTAMPTZ,
+  access_end_date TIMESTAMPTZ,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   last_login_at TIMESTAMPTZ,

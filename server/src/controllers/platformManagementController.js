@@ -421,9 +421,9 @@ export const platformManagementController = {
 
   async delete(req, res) {
     const platform = await loadPlatform(req.params.id);
+    await logAudit(req, 'DELETE_PLATFORM', 'Platform', platform.id, { name: platform.name, code: platform.code }, { platformId: null });
     await platformRepository.delete(platform.id);
     clearResponseCache();
-    await logAudit(req, 'DELETE_PLATFORM', 'Platform', platform.id, { name: platform.name, code: platform.code }, { platformId: platform.id });
     res.json({ success: true, message: `Platform '${platform.name}' (${platform.code}) has been deleted.` });
   },
 

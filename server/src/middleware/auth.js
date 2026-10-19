@@ -24,7 +24,28 @@ export async function authenticate(req, res, next) {
       return res.status(401).json({ success: false, code: 'ACCOUNT_INACTIVE', message: 'Your account is not active.' });
     }
 
+    if (!user.is_super_admin && user.id !== 1) {
+      const now = new Date();
+      if (user.access_end_date && now >= new Date(user.access_end_date)) {
+        await userRepository.deletePermanently(user.id);
+        return res.status(403).json({ success: false, code: 'ACCOUNT_EXPIRED', message: 'Your account access period has ended and this account has been removed.' });
+      }
+      if (user.access_start_date && now < new Date(user.access_start_date)) {
+        return res.status(403).json({ success: false, code: 'ACCOUNT_NOT_STARTED', message: 'Your account access has not started yet.' });
+      }
+    }
+
     const { evaluated, isSuperAdmin, available } = await evaluateUserAccess(user);
+    if (!isSuperAdmin) {
+      if (evaluated.length > 0 && evaluated.every(a => a.status === 'EXPIRED')) {
+        await userRepository.deletePermanently(user.id);
+        return res.status(403).json({ success: false, code: 'ACCOUNT_EXPIRED', message: 'Your platform access period has ended and this account has been removed.' });
+      }
+      if (evaluated.length > 0 && evaluated.every(a => a.status === 'UPCOMING')) {
+        return res.status(403).json({ success: false, code: 'PLATFORM_ACCESS_UPCOMING', message: 'Your platform access has not started yet.' });
+      }
+    }
+
     req.user = {
       id: user.id,
       name: user.name,
@@ -32,6 +53,8 @@ export async function authenticate(req, res, next) {
       username: user.username,
       country: user.country || null,
       isSuperAdmin,
+      access_start_date: user.access_start_date || null,
+      access_end_date: user.access_end_date || null,
       access: evaluated,
       platforms: available
     };

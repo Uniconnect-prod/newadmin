@@ -39,7 +39,8 @@ const SECTIONS = {
 
 const SectionContent = ({ section }) => {
   const cfg = SECTIONS[section];
-  const { activePlatform } = useAuth();
+  const { activePlatform, user } = useAuth();
+  const minDate = user?.isSuperAdmin ? null : (activePlatform?.access?.start_date?.slice(0, 10) || user?.access_start_date?.slice(0, 10));
   const { filters, setFilters, queryParams } = useReportFilters();
   const { data, error, loading, refreshing, refetch } = useApiQuery(`/reports/section/${section}`, { params: queryParams });
   const currency = data?.currency || activePlatform.currency;
@@ -54,7 +55,7 @@ const SectionContent = ({ section }) => {
         eyebrow={<><PlatformAvatar platform={activePlatform} size={18} /> {activePlatform.name}</>}
         title={cfg.title}
         description={cfg.description}
-        actions={<DateRangeFilter filters={filters} setFilters={setFilters} />}
+        actions={<DateRangeFilter filters={filters} setFilters={setFilters} minDate={minDate} />}
       />
 
       {error && !data ? <div className="card"><ErrorPanel error={error} onRetry={refetch} /></div> : loading || !data ? (

@@ -4,7 +4,7 @@ import { describeCapabilities } from '../integrations/capabilities.js';
 import { SETTLEMENT_COLUMNS, DAILY_FIELDS, SUMMARY_FIELDS, RECORD_FIELDS } from '../integrations/canonicalFields.js';
 import { IntegrationError } from '../integrations/errors.js';
 import { sumExact, sumIntegers, toMicros, microsToNumber } from '../integrations/transforms.js';
-import { resolveRange, listDays } from './dateRange.js';
+import { resolveRange, listDays, daysBetween } from './dateRange.js';
 import { resolveMetric, dailyValue, dailyAvailable, DERIVED_METRICS } from './metrics.js';
 
 /**
@@ -143,10 +143,36 @@ export function buildSettlement(snapshot, config) {
   return { columns, rows, totals, totalsProvenance: 'calculated', viewModes: { revenue: columns.some(c => c.available && c.kind === 'currency'), transactions: columns.some(c => c.transactions?.available) } };
 }
 
-async function loadSnapshot(platform, query, { userId, signal, fresh }) {
+async function loadSnapshot(platform, query, ctx = {}) {
+  const { userId, signal, fresh, minStartDate } = ctx;
   const client = await createPlatformClient(platform, { mode: 'published', userId });
   const range = resolveRange(query, client.timezone, client.config.default_range_days);
+  const minDate = minStartDate || query?.minStartDate;
+
+  if (minDate) {
+    if (range.to < minDate) {
+      return {
+        client,
+        range,
+        snapshot: {
+          fetchedAt: new Date().toISOString(),
+          cached: false,
+          pages: 0,
+          summary: { present: false, values: {} },
+          daily: { present: true, rows: [] }
+        }
+      };
+    }
+    if (range.from < minDate) {
+      range.from = minDate;
+      range.days = daysBetween(range.from, range.to);
+    }
+  }
+
   const snapshot = await client.fetchSnapshot({ from: range.from, to: range.to, signal, fresh });
+  if (minDate && snapshot.daily?.rows?.length) {
+    snapshot.daily.rows = snapshot.daily.rows.filter(r => r.report_date >= minDate);
+  }
   return { client, range, snapshot };
 }
 
@@ -200,13 +226,40 @@ export async function getSettlementReport(platform, query, ctx = {}) {
   };
 }
 
-export async function getRecordsPage(platform, { reportType, page, pageSize, search, status, ...query }, ctx = {}) {
+export async function getRecordsPage(platform, { reportType, page, pageSize, search, status, minStartDate, ...query }, ctx = {}) {
   const client = await createPlatformClient(platform, { mode: 'published', userId: ctx.userId });
   const caps = describeCapabilities(client.config);
   if (!caps.recordReports[reportType]) {
     throw new IntegrationError('UNSUPPORTED_REPORT', `Record-level '${reportType}' data is not configured for this platform.`);
   }
   const range = resolveRange(query, client.timezone, client.config.default_range_days);
+  const minDate = minStartDate || ctx.minStartDate;
+  const mapped = Object.keys(client.config.mappings?.records || {});
+
+  const baseResult = {
+    platform: toSelectorEntry(platform),
+    reportType,
+    range,
+    columns: mapped.map(k => ({ key: k, label: RECORD_FIELDS[k].label, type: RECORD_FIELDS[k].type })),
+    supports: { search: Boolean(client.config.params?.search), status: Boolean(client.config.params?.status) },
+    currency: platform.currency || null,
+    fetchedAt: new Date().toISOString()
+  };
+
+  if (minDate) {
+    if (range.to < minDate) {
+      return {
+        ...baseResult,
+        rows: [],
+        pagination: { page: 1, pageSize: Math.min(100, Math.max(1, parseInt(pageSize, 10) || 25)), total: 0, pages: 0 }
+      };
+    }
+    if (range.from < minDate) {
+      range.from = minDate;
+      range.days = daysBetween(range.from, range.to);
+    }
+  }
+
   const result = await client.fetchRecordsPage({
     reportType,
     from: range.from,
@@ -217,17 +270,16 @@ export async function getRecordsPage(platform, { reportType, page, pageSize, sea
     status: client.config.params?.status ? status : undefined,
     signal: ctx.signal
   });
-  const mapped = Object.keys(client.config.mappings?.records || {});
+
+  let rows = result.rows;
+  if (minDate && rows?.length) {
+    rows = rows.filter(r => !r.date || r.date >= minDate);
+  }
+
   return {
-    platform: toSelectorEntry(platform),
-    reportType,
-    range,
-    columns: mapped.map(k => ({ key: k, label: RECORD_FIELDS[k].label, type: RECORD_FIELDS[k].type })),
-    rows: result.rows,
-    pagination: result.pagination,
-    supports: { search: Boolean(client.config.params?.search), status: Boolean(client.config.params?.status) },
-    currency: platform.currency || null,
-    fetchedAt: new Date().toISOString()
+    ...baseResult,
+    rows,
+    pagination: result.pagination
   };
 }
 

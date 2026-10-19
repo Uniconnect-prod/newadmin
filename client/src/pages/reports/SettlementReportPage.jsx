@@ -12,7 +12,8 @@ import { DataSourceBar, DateRangeFilter } from '../../components/ui/data';
 import { ErrorPanel, TableSkeleton } from '../../components/ui/feedback';
 
 const SettlementContent = () => {
-  const { activePlatform, can } = useAuth();
+  const { activePlatform, user, can } = useAuth();
+  const minDate = user?.isSuperAdmin ? null : (activePlatform?.access?.start_date?.slice(0, 10) || user?.access_start_date?.slice(0, 10));
   const toast = useToast();
   const { filters, setFilters, queryParams } = useReportFilters();
   const { data, error, loading, refreshing, refetch } = useApiQuery('/reports/settlement', { params: queryParams });
@@ -42,7 +43,7 @@ const SettlementContent = () => {
         eyebrow={<><PlatformAvatar platform={activePlatform} size={18} /> {activePlatform.name}</>}
         title="Daily settlement report"
         description="Business-day acquisition, activation parking and offer billing, exactly as returned by the platform API."
-        actions={<DateRangeFilter filters={filters} setFilters={setFilters} />}
+        actions={<DateRangeFilter filters={filters} setFilters={setFilters} minDate={minDate} />}
       />
 
       {error && !data ? <div className="card"><ErrorPanel error={error} onRetry={refetch} /></div> : (

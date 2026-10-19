@@ -17,8 +17,21 @@ const UserFormModal = ({ open, onClose, onSaved, user, roles, platforms }) => {
   const toast = useToast();
   const isEdit = Boolean(user);
   const [form, setForm] = useState(() => ({
-    name: user?.name || '', email: user?.email || '', username: user?.username || '', password: '', status: user?.status || 'ACTIVE', country: user?.country || '',
-    assignments: (user?.platforms || []).map(p => ({ platform_id: p.platform_id, role_id: p.role_id, start_date: String(p.start_date).slice(0, 10), end_date: String(p.end_date).slice(0, 10), status: p.configured_status === 'REVOKED' ? 'REVOKED' : 'ACTIVE' }))
+    name: user?.name || '',
+    email: user?.email || '',
+    username: user?.username || '',
+    password: '',
+    status: user?.status || 'ACTIVE',
+    country: user?.country || '',
+    access_start_date: user?.access_start_date ? String(user.access_start_date).slice(0, 10) : today(),
+    access_end_date: user?.access_end_date ? String(user.access_end_date).slice(0, 10) : inDays(365),
+    assignments: (user?.platforms || []).map(p => ({
+      platform_id: p.platform_id,
+      role_id: p.role_id,
+      start_date: String(p.start_date).slice(0, 10),
+      end_date: String(p.end_date).slice(0, 10),
+      status: p.configured_status === 'REVOKED' ? 'REVOKED' : 'ACTIVE'
+    }))
   }));
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState(null);
@@ -30,8 +43,18 @@ const UserFormModal = ({ open, onClose, onSaved, user, roles, platforms }) => {
     setSaving(true);
     setError(null);
     const body = {
-      name: form.name, email: form.email, username: form.username, status: form.status, country: form.country || null,
-      platform_assignments: form.assignments.filter(a => a.platform_id && a.role_id).map(a => ({ ...a, start_date: `${a.start_date}T00:00:00.000Z`, end_date: `${a.end_date}T23:59:59.999Z` }))
+      name: form.name,
+      email: form.email,
+      username: form.username,
+      status: form.status,
+      country: form.country || null,
+      access_start_date: form.access_start_date ? `${form.access_start_date}T00:00:00.000Z` : null,
+      access_end_date: form.access_end_date ? `${form.access_end_date}T23:59:59.999Z` : null,
+      platform_assignments: form.assignments.filter(a => a.platform_id && a.role_id).map(a => ({
+        ...a,
+        start_date: `${a.start_date || form.access_start_date}T00:00:00.000Z`,
+        end_date: `${a.end_date || form.access_end_date}T23:59:59.999Z`
+      }))
     };
     if (!isEdit) body.password = form.password;
     try {
@@ -53,7 +76,7 @@ const UserFormModal = ({ open, onClose, onSaved, user, roles, platforms }) => {
       open={open}
       size="lg"
       title={isEdit ? `Edit ${user.name}` : 'Add user'}
-      subtitle="Platform access is granted per platform with a role and an access window."
+      subtitle="Configure account credentials and validity dates. Outside the window, access is blocked and expired accounts are automatically purged."
       onClose={saving ? undefined : onClose}
       footer={(
         <>
@@ -79,10 +102,62 @@ const UserFormModal = ({ open, onClose, onSaved, user, roles, platforms }) => {
           )}
         </div>
 
+        <div className="form-grid">
+          <Field label="Access start date" required hint="Cannot sign in or see reports before this day." htmlFor="uf-start">
+            <input
+              id="uf-start"
+              type="date"
+              className="input"
+              value={form.access_start_date}
+              max={form.access_end_date || undefined}
+              onChange={e => {
+                const nextStart = e.target.value;
+                set({
+                  access_start_date: nextStart,
+                  assignments: form.assignments.map(a => (!a.start_date || a.start_date < nextStart ? { ...a, start_date: nextStart } : a))
+                });
+              }}
+              required
+            />
+          </Field>
+          <Field label="Access end date" required hint="On this day, the user ID is automatically removed from the database." htmlFor="uf-end">
+            <input
+              id="uf-end"
+              type="date"
+              className="input"
+              value={form.access_end_date}
+              min={form.access_start_date || undefined}
+              onChange={e => {
+                const nextEnd = e.target.value;
+                set({
+                  access_end_date: nextEnd,
+                  assignments: form.assignments.map(a => (!a.end_date || a.end_date > nextEnd ? { ...a, end_date: nextEnd } : a))
+                });
+              }}
+              required
+            />
+          </Field>
+        </div>
+
         <div>
           <div className="row-between" style={{ marginBottom: 8 }}>
             <div className="section-title" style={{ margin: 0 }}>Platform access</div>
-            <button type="button" className="btn btn--soft btn--sm" onClick={() => set({ assignments: [...form.assignments, { platform_id: '', role_id: roles.find(r => r.name === 'Viewer')?.id || '', start_date: today(), end_date: inDays(365), status: 'ACTIVE' }] })}>
+            <button
+              type="button"
+              className="btn btn--soft btn--sm"
+              onClick={() => set({
+                assignments: [
+                  ...form.assignments,
+                  {
+                    platform_id: '',
+                    role_id: roles.find(r => r.name === 'Viewer')?.id || '',
+                    start_date: form.access_start_date || today(),
+                    end_date: form.access_end_date || inDays(365),
+                    status: 'ACTIVE'
+                  }
+                ]
+              })}
+            >
               <Plus size={14} /> Add platform
             </button>
           </div>
@@ -97,8 +172,8 @@ const UserFormModal = ({ open, onClose, onSaved, user, roles, platforms }) => {
                   <select className="select input--sm" value={a.role_id} onChange={e => setAssignment(i, { role_id: Number(e.target.value) })} aria-label="Role" required>
                     {roles.map(r => <option key={r.id} value={r.id}>{r.name}</option>)}
                   </select>
-                  <input type="date" className="input input--sm" value={a.start_date} max={a.end_date} onChange={e => setAssignment(i, { start_date: e.target.value })} aria-label="Access start" required />
-                  <input type="date" className="input input--sm" value={a.end_date} min={a.start_date} onChange={e => setAssignment(i, { end_date: e.target.value })} aria-label="Access end" required />
+                  <input type="date" className="input input--sm" value={a.start_date} min={form.access_start_date || undefined} max={a.end_date} onChange={e => setAssignment(i, { start_date: e.target.value })} aria-label="Access start" required />
+                  <input type="date" className="input input--sm" value={a.end_date} min={a.start_date} max={form.access_end_date || undefined} onChange={e => setAssignment(i, { end_date: e.target.value })} aria-label="Access end" required />
                   <select className="select input--sm" value={a.status} onChange={e => setAssignment(i, { status: e.target.value })} aria-label="Assignment status">
                     <option value="ACTIVE">Active</option><option value="REVOKED">Revoked</option>
                   </select>
@@ -152,7 +227,7 @@ const UsersPage = () => {
     setBusy(true);
     try {
       await api.delete(`/users/${deleting.id}`);
-      toast.success(`${deleting.name} was removed and their access revoked.`);
+      toast.success(`${deleting.name} was permanently removed from the database.`);
       setDeleting(null);
       users.reload();
     } catch (err) {
@@ -182,12 +257,34 @@ const UsersPage = () => {
         ) : (
           <div className="table-wrap">
             <table className="table">
-              <thead><tr><th>User</th><th>Role(s)</th><th>Platform access</th><th>Status</th><th>Last sign-in</th>{canManage && <th />}</tr></thead>
+              <thead><tr><th>User</th><th>Role(s)</th><th>Access window</th><th>Platform access</th><th>Status</th><th>Last sign-in</th>{canManage && <th />}</tr></thead>
               <tbody>
                 {list.map(u => (
                   <tr key={u.id}>
                     <td><div className="text-strong">{u.name}{u.id === me?.id && <span className="badge badge--brand" style={{ marginLeft: 6 }}>You</span>}</div><span className="cell-sub">{u.email} · @{u.username}</span></td>
                     <td>{u.is_super_admin ? <span className="badge badge--dark">Super Admin</span> : u.roles.map(r => <span key={r} className="badge" style={{ marginRight: 4 }}>{r}</span>)}</td>
+                    <td>
+                      {u.is_super_admin ? (
+                        <span className="badge badge--dark">Always Active</span>
+                      ) : (u.access_start_date || u.access_end_date) ? (
+                        <div className="access-window-cell">
+                          <div className="text-strong nowrap" style={{ fontSize: '0.85rem' }}>
+                            {u.access_start_date ? formatDay(u.access_start_date.slice(0, 10)) : '—'} → {u.access_end_date ? formatDay(u.access_end_date.slice(0, 10)) : '—'}
+                          </div>
+                          <div className="cell-sub" style={{ fontSize: '0.75rem', marginTop: 2 }}>
+                            {new Date() < new Date(u.access_start_date) ? (
+                              <span style={{ color: '#d97706', fontWeight: 600 }}>Starts in {Math.max(1, Math.ceil((new Date(u.access_start_date) - new Date()) / 86400000))}d</span>
+                            ) : new Date() >= new Date(u.access_end_date) ? (
+                              <span style={{ color: '#ef4444', fontWeight: 600 }}>Expired (queued for purge)</span>
+                            ) : (
+                              <span style={{ color: '#10b981', fontWeight: 600 }}>Active ({Math.max(0, Math.ceil((new Date(u.access_end_date) - new Date()) / 86400000))}d left)</span>
+                            )}
+                          </div>
+                        </div>
+                      ) : (
+                        <span className="text-faint">No window</span>
+                      )}
+                    </td>
                     <td>
                       {u.platforms.length === 0 ? <span className="text-faint">{u.is_super_admin ? 'All platforms' : 'None'}</span> : (
                         <div className="access-list">
@@ -236,7 +333,7 @@ const UsersPage = () => {
         footer={(
           <>
             <button type="button" className="btn btn--secondary" onClick={() => setResetting(null)} disabled={busy}>Cancel</button>
-            <button type="button" className="btn btn--primary" onClick={doReset} disabled={busy || newPassword.length < 10}>{busy && <Loader2 size={16} className="spin" />} Reset password</button>
+            <button type="submit" className="btn btn--primary" onClick={doReset} disabled={busy || newPassword.length < 10}>{busy && <Loader2 size={16} className="spin" />} Reset password</button>
           </>
         )}
       >
@@ -245,8 +342,8 @@ const UsersPage = () => {
 
       <ConfirmDialog
         open={Boolean(deleting)}
-        title={`Remove ${deleting?.name || ''}?`}
-        message="The account is deactivated, all platform access is revoked and existing sessions are signed out. Audit history is kept."
+        title={`Permanently remove ${deleting?.name || ''}?`}
+        message="This user will be permanently removed from the database, along with all platform assignments and active sessions. They will not be able to sign in again."
         confirmLabel="Remove user"
         tone="danger"
         busy={busy}

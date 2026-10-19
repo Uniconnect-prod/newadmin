@@ -63,6 +63,7 @@ export function requirePlatform({ allowAll = true } = {}) {
 
       req.activePlatform = platform;
       req.platformRole = assignment.role_name;
+      req.platformAccess = assignment;
       return next();
     } catch (err) {
       return next(err);
