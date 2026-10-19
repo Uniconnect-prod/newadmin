@@ -161,7 +161,8 @@ export const platformManagementController = {
     }
     let created;
     try {
-      created = await platformRepository.create({ ...details, integration }, req.user.id);
+      const hash = integration ? draftHash({ integration }) : null;
+      created = await platformRepository.create({ ...details, integration, configHash: hash }, req.user.id);
       if (created?.id && integration) {
         await mappingRepository.savePlatformMappings(created.id, {
           fieldMappings: integration.field_mappings || integration.mappings?.summary || {},
@@ -197,12 +198,12 @@ export const platformManagementController = {
   },
 
   /**
-   * Save the draft API configuration and (optionally) credentials.
-   * Credentials are encrypted server-side and never returned.
+   * Save the API configuration and (optionally) credentials.
+   * If publish: true or auto_activate: true, configuration is published and platform activated immediately.
    */
   async saveIntegration(req, res) {
     const platform = await loadPlatform(req.params.id);
-    const { integration, secrets = {}, clear_secrets: clearSecrets = [] } = req.body || {};
+    const { integration, secrets = {}, clear_secrets: clearSecrets = [], publish: shouldPublish, auto_activate: autoActivate } = req.body || {};
     if (!integration || typeof integration !== 'object') throw badRequest('integration configuration is required.');
     const { config: cfg, errors } = validateIntegrationConfig(integration);
     if (errors.length) throw new AppError(422, 'INVALID_CONFIGURATION', 'The API configuration has errors.', { errors });
@@ -225,6 +226,13 @@ export const platformManagementController = {
       clearTokenCache();
       clearResponseCache();
     }
+
+    if (shouldPublish || autoActivate || req.query?.publish === 'true') {
+      const hash = draftHash({ integration: cfg });
+      await platformRepository.publish(platform.id, { integration: cfg, configHash: hash, userId: req.user.id });
+      clearResponseCache();
+    }
+
     const saved = await platformRepository.findById(platform.id);
     await logAudit(req, 'UPDATE_INTEGRATION', 'Platform', platform.id, {
       base_url: cfg.base_url,
@@ -234,7 +242,7 @@ export const platformManagementController = {
       credentials_changed: Object.keys(submittedSecrets),
       credentials_cleared: clear
     }, { platformId: platform.id });
-    res.json({ success: true, message: 'API configuration saved as draft.', data: adminView(saved) });
+    res.json({ success: true, message: 'API configuration saved successfully.', data: adminView(saved) });
   },
 
   async testHealth(req, res) {
@@ -398,15 +406,18 @@ export const platformManagementController = {
 
   async activate(req, res) {
     const platform = await loadPlatform(req.params.id);
-    if (!platform.integration) throw new AppError(409, 'INTEGRATION_NOT_CONFIGURED', 'Configure the platform API before activating.');
+    const intg = platform.integration || platform.published_integration;
+    if (!intg) throw new AppError(409, 'INTEGRATION_NOT_CONFIGURED', 'Configure the platform API before activating.');
     const hash = draftHash(platform);
-    if (platform.validation?.status !== 'PASSED' || platform.validation?.config_hash !== hash) {
-      throw new AppError(409, 'VALIDATION_REQUIRED', 'Run validation on the current configuration and resolve all failed checks before activating.');
+    if (!req.query?.force && !req.body?.force) {
+      if (platform.validation?.status !== 'PASSED' || platform.validation?.config_hash !== hash) {
+        throw new AppError(409, 'VALIDATION_REQUIRED', 'Run validation on the current configuration and resolve all failed checks before activating.');
+      }
     }
-    const published = await platformRepository.publish(platform.id, { integration: platform.integration, configHash: hash, userId: req.user.id });
+    const published = await platformRepository.publish(platform.id, { integration: intg, configHash: hash, userId: req.user.id });
     clearResponseCache();
     await integrationLogRepository.insert({ platformId: platform.id, platformCode: platform.code, kind: 'ACTIVATION', ok: true, message: 'Configuration published and platform activated.', userId: req.user.id });
-    await logAudit(req, 'ACTIVATE_PLATFORM', 'Platform', platform.id, { config_hash: hash.slice(0, 12) }, { platformId: platform.id });
+    await logAudit(req, 'ACTIVATE_PLATFORM', 'Platform', platform.id, { config_hash: hash ? hash.slice(0, 12) : null }, { platformId: platform.id });
     res.json({ success: true, message: `${platform.name} is active and available to authorised users.`, data: adminView(published) });
   },
 

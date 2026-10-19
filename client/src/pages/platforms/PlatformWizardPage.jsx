@@ -485,10 +485,12 @@ const PlatformWizardPage = () => {
           country: details.country || null,
           currency: details.currency ? details.currency.toUpperCase() : null,
           integration: config,
-          secrets: submittedSecrets
+          secrets: submittedSecrets,
+          auto_activate: true,
+          publish: true
         };
         const res = await api.post('/platform-management', body);
-        toast.success(`Platform "${res.data.data.name}" created successfully.`);
+        toast.success(`Platform "${res.data.data.name}" created and activated successfully.`);
         await refreshPlatforms?.();
         setDirty(false);
         navigate(`/platforms/${res.data.data.id}`);
@@ -503,12 +505,14 @@ const PlatformWizardPage = () => {
 
         const intgRes = await api.put(`/platform-management/${platform.id}/integration`, {
           integration: config,
-          secrets: submittedSecrets
+          secrets: submittedSecrets,
+          auto_activate: true,
+          publish: true
         });
 
         setPlatform(intgRes.data.data);
         setDirty(false);
-        toast.success('Platform configuration saved successfully.');
+        toast.success('Platform configuration saved and activated successfully.');
         await refreshPlatforms?.();
       }
     } catch (err) {

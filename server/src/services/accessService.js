@@ -19,7 +19,7 @@ export function isSuperAdminUser(user, evaluatedAccess = []) {
  * integration configuration beyond the capability summary of the PUBLISHED config.
  */
 export function toSelectorEntry(platform, role = null) {
-  const published = platform.published_integration || null;
+  const published = platform.published_integration || platform.integration || null;
   return {
     id: platform.id,
     code: platform.code,

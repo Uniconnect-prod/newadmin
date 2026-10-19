@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { Plus, Search, Settings2, History, Layers, Clock, AlertTriangle, Trash2 } from 'lucide-react';
+import { Plus, Search, Settings2, History, Layers, Clock, AlertTriangle, Trash2, CheckCircle2 } from 'lucide-react';
 import { useApiQuery } from '../../hooks/useApiQuery';
 import { useAuth } from '../../context/AuthContext';
 import { useToast } from '../../context/ToastContext';
@@ -12,11 +12,10 @@ import { formatRelative } from '../../services/format';
 import './Platforms.scss';
 
 export function integrationState(p) {
-  if (!p.integration) return { status: 'DRAFT', label: 'Not configured' };
+  if (!p.integration && !p.published) return { status: 'DRAFT', label: 'Not configured' };
+  if (p.status === 'ACTIVE' || p.published) return { status: 'ACTIVE', label: 'Published' };
   if (p.validation?.status === 'FAILED' && p.validation_current) return { status: 'FAILED', label: 'Validation failed' };
-  if (!p.published) return { status: p.validation_current ? 'PASSED' : 'NEEDS_VALIDATION', label: p.validation_current ? 'Validated, not activated' : 'Needs validation' };
-  if (p.has_unpublished_changes) return { status: 'WARNING', label: 'Unpublished changes' };
-  return { status: 'ACTIVE', label: 'Published' };
+  return { status: 'ACTIVE', label: 'Configured' };
 }
 
 const PlatformsListPage = () => {
@@ -28,6 +27,16 @@ const PlatformsListPage = () => {
   const [deletingPlatform, setDeletingPlatform] = useState(null);
   const [isDeleting, setIsDeleting] = useState(false);
   const { data, error, loading, reload } = useApiQuery('/platform-management', { platformScoped: false });
+
+  const handleActivate = async (p) => {
+    try {
+      await api.post(`/platform-management/${p.id}/activate?force=true`);
+      toast.success(`Platform "${p.name}" activated.`);
+      await Promise.all([reload(), refreshPlatforms?.()]);
+    } catch (err) {
+      toast.error(`Failed to activate platform: ${describeError(err).message}`);
+    }
+  };
 
   const handleDelete = async () => {
     if (!deletingPlatform) return;
@@ -111,7 +120,10 @@ const PlatformsListPage = () => {
                   {health.last_error_at && <div style={{ gridColumn: '1 / -1' }}><dt>Last error</dt><dd className="text-muted">{health.last_error_code} · {formatRelative(health.last_error_at)}</dd></div>}
                 </dl>
                 <div className="platform-card__actions">
-                  <button type="button" className="btn btn--primary btn--sm" onClick={() => navigate(`/platforms/${p.id}?step=${p.integration ? 'validate' : 'api'}`)}><Settings2 size={14} /> Configure</button>
+                  <button type="button" className="btn btn--primary btn--sm" onClick={() => navigate(`/platforms/${p.id}`)}><Settings2 size={14} /> Configure</button>
+                  {p.status !== 'ACTIVE' && (
+                    <button type="button" className="btn btn--success btn--sm" onClick={() => handleActivate(p)} title={`Activate ${p.name}`}><CheckCircle2 size={14} /> Activate</button>
+                  )}
                   <button type="button" className="btn btn--secondary btn--sm" onClick={() => navigate(`/platforms/history?platformId=${p.id}`)}><History size={14} /> History</button>
                   <button type="button" className="btn btn--danger btn--sm" style={{ marginLeft: 'auto' }} onClick={() => setDeletingPlatform(p)} title={`Delete ${p.name}`}><Trash2 size={14} /> Delete</button>
                 </div>

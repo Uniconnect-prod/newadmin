@@ -55,7 +55,7 @@ export function hasSecrets(platform) {
  *  mode 'draft'     – the editable configuration, optionally overridden in-memory by the wizard
  */
 export async function createPlatformClient(platform, { mode = 'published', draftOverride = null, userId = null } = {}) {
-  const config = mode === 'draft' ? (draftOverride || platform.integration) : platform.published_integration;
+  const config = mode === 'draft' ? (draftOverride || platform.integration) : (platform.published_integration || platform.integration);
   if (!config || !config.base_url) throw new IntegrationError('INTEGRATION_NOT_CONFIGURED');
   const secrets = hasSecrets(platform) ? decryptAll(platform.integration_secrets) : {};
   const policy = await getOutboundPolicy();

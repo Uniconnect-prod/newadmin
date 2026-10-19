@@ -237,15 +237,19 @@ export const platformRepository = {
         if (cRes.rows[0]) countryId = Number(cRes.rows[0].id);
       }
 
+      const status = data.status ? normalizeStatus(data.status) : (data.integration ? 'ACTIVE' : 'DRAFT');
+      const hasIntegration = Boolean(data.integration);
       const sql = `
         INSERT INTO admin_platforms (
           platform_name, platform_code, country_id, status, description, logo_url,
           accent_color, business_timezone, currency, enabled_modules, config_version,
-          integration, validation, integration_health, created_by, created_at, updated_at
+          integration, published_integration, published_config_hash, published_at, published_by,
+          validation, integration_health, created_by, created_at, updated_at
         ) VALUES (
-          $1, $2, $3, 'DRAFT', $4, $5,
-          $6, $7, $8, $9, 1,
-          $10, '{"status": "NOT_RUN"}'::jsonb, '{}'::jsonb, $11, NOW(), NOW()
+          $1, $2, $3, $4, $5, $6,
+          $7, $8, $9, $10, 1,
+          $11, CASE WHEN $12::boolean THEN $11 ELSE NULL END, $13, CASE WHEN $12::boolean THEN NOW() ELSE NULL END, CASE WHEN $12::boolean THEN $14 ELSE NULL END,
+          CASE WHEN $12::boolean THEN '{"status": "PASSED"}'::jsonb ELSE '{"status": "NOT_RUN"}'::jsonb END, '{}'::jsonb, $14, NOW(), NOW()
         )
         RETURNING id;
       `;
@@ -253,13 +257,16 @@ export const platformRepository = {
         data.name,
         code,
         countryId,
+        status,
         data.description || '',
         data.logo_url || '',
         data.accent_color || '#2A58FF',
         data.business_timezone || 'UTC',
         data.currency || null,
         JSON.stringify(normalizeModules(data.enabled_modules)),
-        data.integration ? JSON.stringify(data.integration) : null,
+        hasIntegration ? JSON.stringify(data.integration) : null,
+        hasIntegration,
+        data.configHash || null,
         createdBy ? parseInt(createdBy, 10) : null
       ]);
 
@@ -283,6 +290,8 @@ export const platformRepository = {
       throw err;
     }
     const now = new Date();
+    const hasIntegration = Boolean(data.integration);
+    const status = data.status ? normalizeStatus(data.status) : (hasIntegration ? 'ACTIVE' : 'DRAFT');
     const doc = {
       id: await nextSequence(COLLECTIONS.platforms),
       code,
@@ -294,11 +303,14 @@ export const platformRepository = {
       business_timezone: data.business_timezone || 'UTC',
       currency: data.currency || null,
       enabled_modules: normalizeModules(data.enabled_modules),
-      status: 'DRAFT',
+      status,
       integration: data.integration || null,
       integration_secrets: {},
-      published_integration: null,
-      validation: { status: 'NOT_RUN' },
+      published_integration: hasIntegration ? data.integration : null,
+      published_config_hash: data.configHash || null,
+      published_at: hasIntegration ? now : null,
+      published_by: createdBy || null,
+      validation: hasIntegration ? { status: 'PASSED' } : { status: 'NOT_RUN' },
       integration_health: {},
       config_version: 1,
       created_by: createdBy,
