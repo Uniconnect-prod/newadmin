@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState, useMemo } from 'react';
 import { Download, RotateCw, Loader2, ChevronLeft, ChevronRight } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useToast } from '../../context/ToastContext';
@@ -28,8 +28,22 @@ const STATUS_OPTIONS = [
 ];
 
 export const OverviewPage = () => {
-  const { activePlatform, user } = useAuth();
+  const { activePlatform, user, selectedCountry, countries } = useAuth();
   const toast = useToast();
+
+  const currentCurrency = useMemo(() => {
+    if (activePlatform?.currency) return activePlatform.currency;
+    const targetCountry = selectedCountry || activePlatform?.country;
+    if (targetCountry && targetCountry !== 'All Countries') {
+      const match = (countries || []).find(
+        c => (c.name || c.country_name || '').toLowerCase() === targetCountry.toLowerCase()
+      );
+      if (match?.currency || match?.currency_code) {
+        return match.currency || match.currency_code;
+      }
+    }
+    return 'GHS';
+  }, [activePlatform, selectedCountry, countries]);
 
   const minDate = user?.isSuperAdmin ? null : (activePlatform?.access?.start_date?.slice(0, 10) || user?.access_start_date?.slice(0, 10));
   const getInitialFrom = () => {
@@ -58,7 +72,8 @@ export const OverviewPage = () => {
     monthlySubscriber: 0,
     todaySubscriber: 0,
     todayRenewal: 0,
-    monthlyGhcAmount: '0.00'
+    monthlyAmount: '0.00',
+    currency: null
   });
   const [records, setRecords] = useState([]);
   const [totalRecords, setTotalRecords] = useState(0);
@@ -66,6 +81,8 @@ export const OverviewPage = () => {
   const [loadingRecords, setLoadingRecords] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [exporting, setExporting] = useState(false);
+
+  const displayCurrency = kpiData.currency || currentCurrency;
 
   // Fetch KPI Cards
   const loadKpis = useCallback(async (filters) => {
@@ -79,18 +96,20 @@ export const OverviewPage = () => {
       const mKpis = monthRes?.data?.data?.kpis || [];
       const tKpis = todayRes?.data?.data?.kpis || [];
 
-      const newSubs = mKpis.find(k => k.key === 'new_subscribers')?.value;
-      const todaySubs = tKpis.find(k => k.key === 'new_subscribers')?.value;
-      const todayRen = tKpis.find(k => k.key === 'renewal_count')?.value;
-      const grandTotal = mKpis.find(k => k.key === 'grand_total')?.value;
+      const newSubs = mKpis.find(k => k.key === 'new_subscribers')?.value ?? monthRes?.data?.data?.totals?.new_subscribers?.value;
+      const todaySubs = tKpis.find(k => k.key === 'new_subscribers')?.value ?? todayRes?.data?.data?.totals?.new_subscribers?.value;
+      const todayRen = tKpis.find(k => k.key === 'renewal_count')?.value ?? todayRes?.data?.data?.totals?.renewal_count?.value;
+      const grandTotal = mKpis.find(k => k.key === 'grand_total')?.value ?? monthRes?.data?.data?.revenue?.[0]?.value;
+      const resCurrency = monthRes?.data?.data?.currency || monthRes?.data?.data?.revenue?.[0]?.currency || null;
 
       setKpiData({
         monthlySubscriber: newSubs !== null && newSubs !== undefined ? Number(newSubs) : 0,
         todaySubscriber: todaySubs !== null && todaySubs !== undefined ? Number(todaySubs) : 0,
         todayRenewal: todayRen !== null && todayRen !== undefined ? Number(todayRen) : 0,
-        monthlyGhcAmount: grandTotal !== null && grandTotal !== undefined
+        monthlyAmount: grandTotal !== null && grandTotal !== undefined
           ? Number(grandTotal).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
-          : '0.00'
+          : '0.00',
+        currency: resCurrency
       });
     } catch {
       // keep fallback
@@ -231,10 +250,10 @@ export const OverviewPage = () => {
         </div>
 
         <div className="gh-kpi-card">
-          <h3 className="gh-kpi-title">Monthly GHCAmount</h3>
+          <h3 className="gh-kpi-title">Monthly {displayCurrency} Amount</h3>
           <div className="gh-kpi-value-row">
-            <span className="gh-currency-ghc">GHC</span>
-            <span className="gh-currency-val">{kpiData.monthlyGhcAmount}</span>
+            <span className="gh-currency-ghc">{displayCurrency}</span>
+            <span className="gh-currency-val">{kpiData.monthlyAmount}</span>
           </div>
           <div className="gh-kpi-footer">
             <span className="gh-tag-up">Up 0%</span>

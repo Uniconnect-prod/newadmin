@@ -5,13 +5,17 @@ const AuthContext = createContext(null);
 
 const ALL_COUNTRIES = 'All Countries';
 
-function allPlatformsScope(country) {
+function allPlatformsScope(country, countriesList = []) {
+  const match = Array.isArray(countriesList)
+    ? countriesList.find(c => (c.name || c.country_name || '').toLowerCase() === (country || '').toLowerCase())
+    : null;
   return {
     id: 'ALL',
     code: 'ALL',
     name: country && country !== ALL_COUNTRIES ? `All Platforms (${country})` : 'All Platforms',
     isAll: true,
-    country: country && country !== ALL_COUNTRIES ? country : null
+    country: country && country !== ALL_COUNTRIES ? country : null,
+    currency: match?.currency || match?.currency_code || null
   };
 }
 
@@ -89,7 +93,18 @@ export const AuthProvider = ({ children }) => {
   useEffect(() => {
     if (!user) return;
     api.get('/countries', { params: { status: 'ACTIVE' } })
-      .then(res => setCountries(res.data.data || []))
+      .then(res => {
+        const list = res.data.data || [];
+        setCountries(list);
+        setActivePlatformState(prev => {
+          if (prev?.isAll && prev?.country) {
+            const enriched = allPlatformsScope(prev.country, list);
+            session.write('platform', enriched);
+            return enriched;
+          }
+          return prev;
+        });
+      })
       .catch(() => setCountries([]));
   }, [user]);
 
@@ -119,18 +134,18 @@ export const AuthProvider = ({ children }) => {
     sessionStorage.setItem('selectedCountry', country);
     const inCountry = platformsForCountry(country);
     if (user?.isSuperAdmin) {
-      setActivePlatform(allPlatformsScope(country));
+      setActivePlatform(allPlatformsScope(country, countries));
     } else if (inCountry.length) {
       setActivePlatform(inCountry[0]);
     }
-  }, [platformsForCountry, setActivePlatform, user?.isSuperAdmin]);
+  }, [platformsForCountry, setActivePlatform, user?.isSuperAdmin, countries]);
 
   const clearCountry = useCallback(() => selectCountry(null), [selectCountry]);
 
   const switchPlatform = useCallback((target) => {
     if (target === 'ALL' || target?.isAll) {
       if (!user?.isSuperAdmin) return false;
-      setActivePlatform(allPlatformsScope(selectedCountry));
+      setActivePlatform(allPlatformsScope(selectedCountry, countries));
       return true;
     }
     const code = typeof target === 'string' ? target : target?.code;
@@ -138,7 +153,7 @@ export const AuthProvider = ({ children }) => {
     if (!match) return false;
     setActivePlatform(match);
     return true;
-  }, [availablePlatforms, selectedCountry, setActivePlatform, user?.isSuperAdmin]);
+  }, [availablePlatforms, selectedCountry, setActivePlatform, user?.isSuperAdmin, countries]);
 
   const login = useCallback(async (username, password) => {
     try {
