@@ -247,9 +247,9 @@ export const platformRepository = {
           validation, integration_health, created_by, created_at, updated_at
         ) VALUES (
           $1, $2, $3, $4, $5, $6,
-          $7, $8, $9, $10, 1,
-          $11, CASE WHEN $12::boolean THEN $11 ELSE NULL END, $13, CASE WHEN $12::boolean THEN NOW() ELSE NULL END, CASE WHEN $12::boolean THEN $14 ELSE NULL END,
-          CASE WHEN $12::boolean THEN '{"status": "PASSED"}'::jsonb ELSE '{"status": "NOT_RUN"}'::jsonb END, '{}'::jsonb, $14, NOW(), NOW()
+          $7, $8, $9, $10::jsonb, 1,
+          $11::jsonb, CASE WHEN $12::boolean THEN $11::jsonb ELSE NULL END, $13, CASE WHEN $12::boolean THEN NOW() ELSE NULL END, CASE WHEN $12::boolean THEN $14::bigint ELSE NULL END,
+          CASE WHEN $12::boolean THEN '{"status": "PASSED"}'::jsonb ELSE '{"status": "NOT_RUN"}'::jsonb END, '{}'::jsonb, $14::bigint, NOW(), NOW()
         )
         RETURNING id;
       `;
