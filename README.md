@@ -85,9 +85,7 @@ npm run build               # → client/dist
 ```bash
 cd server
 npm run db:init                 # Initialize fresh relational PostgreSQL database schema
-npm run db:migrate              # Run database migrations
 npm run setup:superadmin        # Provision or verify the primary Super Admin account
-npm test                        # Run automated test suite
 ```
 
 ---
