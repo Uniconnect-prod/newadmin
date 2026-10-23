@@ -1,5 +1,16 @@
 import React, { useCallback, useEffect, useState, useMemo } from 'react';
-import { Download, RotateCw, Loader2, ChevronLeft, ChevronRight } from 'lucide-react';
+import {
+  Download,
+  RotateCw,
+  Loader2,
+  ChevronLeft,
+  ChevronRight,
+  Users,
+  UserPlus,
+  RefreshCcw,
+  Wallet,
+  TrendingUp
+} from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useToast } from '../../context/ToastContext';
 import api, { downloadCsv, describeBlobError, describeError } from '../../services/api';
@@ -245,46 +256,79 @@ export const OverviewPage = () => {
     <div className="gh-dashboard">
       {/* 4 Top KPI Cards */}
       <div className="gh-kpi-grid">
-        <div className="gh-kpi-card">
-          <h3 className="gh-kpi-title">{kpiData.isCustom ? 'Subscriber' : 'Monthly Subscriber'}</h3>
+        <div className="gh-kpi-card gh-kpi-card--subscribers">
+          <div className="gh-kpi-header">
+            <span className="gh-kpi-title">{kpiData.isCustom ? 'Subscriber' : 'Monthly Subscriber'}</span>
+            <div className="gh-kpi-icon-wrap" aria-hidden="true">
+              <Users size={17} />
+            </div>
+          </div>
           <div className="gh-kpi-value-row">
             <span className="gh-kpi-value">{kpiData.monthlySubscriber.toLocaleString()}</span>
           </div>
           <div className="gh-kpi-footer">
-            <span className="gh-tag-up">Up 0%</span>
+            <span className="gh-trend-pill">
+              <TrendingUp size={11} />
+              <span>0%</span>
+            </span>
             <span className="gh-tag-vs">vs. last week</span>
           </div>
         </div>
 
-        <div className="gh-kpi-card">
-          <h3 className="gh-kpi-title">Today Subscriber</h3>
+        <div className="gh-kpi-card gh-kpi-card--today-sub">
+          <div className="gh-kpi-header">
+            <span className="gh-kpi-title">Today Subscriber</span>
+            <div className="gh-kpi-icon-wrap" aria-hidden="true">
+              <UserPlus size={17} />
+            </div>
+          </div>
           <div className="gh-kpi-value-row">
             <span className="gh-kpi-value">{kpiData.todaySubscriber.toLocaleString()}</span>
           </div>
           <div className="gh-kpi-footer">
-            <span className="gh-tag-up">Up 0%</span>
+            <span className="gh-trend-pill">
+              <TrendingUp size={11} />
+              <span>0%</span>
+            </span>
             <span className="gh-tag-vs">vs. last week</span>
           </div>
         </div>
 
-        <div className="gh-kpi-card">
-          <h3 className="gh-kpi-title">{kpiData.isCustom ? 'Renewal' : 'Today Renewal'}</h3>
+        <div className="gh-kpi-card gh-kpi-card--renewals">
+          <div className="gh-kpi-header">
+            <span className="gh-kpi-title">{kpiData.isCustom ? 'Renewal' : 'Today Renewal'}</span>
+            <div className="gh-kpi-icon-wrap" aria-hidden="true">
+              <RefreshCcw size={17} />
+            </div>
+          </div>
           <div className="gh-kpi-value-row">
             <span className="gh-kpi-value">{kpiData.todayRenewal.toLocaleString()}</span>
           </div>
           <div className="gh-kpi-footer">
-            <span className="gh-tag-up">Up 0%</span>
+            <span className="gh-trend-pill">
+              <TrendingUp size={11} />
+              <span>0%</span>
+            </span>
             <span className="gh-tag-vs">vs. last week</span>
           </div>
         </div>
 
-        <div className="gh-kpi-card">
-          <h3 className="gh-kpi-title">{kpiData.isCustom ? (displayCurrency === 'GHS' || displayCurrency === 'GHC' ? 'GHCAmount' : `${displayCurrency}Amount`) : `Monthly ${displayCurrency === 'GHS' || displayCurrency === 'GHC' ? 'GHCAmount' : `${displayCurrency}Amount`}`}</h3>
+        <div className="gh-kpi-card gh-kpi-card--revenue">
+          <div className="gh-kpi-header">
+            <span className="gh-kpi-title">{kpiData.isCustom ? (displayCurrency === 'GHS' || displayCurrency === 'GHC' ? 'GHCAmount' : `${displayCurrency}Amount`) : `Monthly ${displayCurrency === 'GHS' || displayCurrency === 'GHC' ? 'GHCAmount' : `${displayCurrency}Amount`}`}</span>
+            <div className="gh-kpi-icon-wrap" aria-hidden="true">
+              <Wallet size={17} />
+            </div>
+          </div>
           <div className="gh-kpi-value-row">
-            <span className="gh-kpi-value">{displayCurrency === 'GHS' ? 'GHC' : displayCurrency}{kpiData.monthlyAmount}</span>
+            <span className="gh-kpi-currency-badge">{displayCurrency === 'GHS' ? 'GHC' : displayCurrency}</span>
+            <span className="gh-kpi-value">{kpiData.monthlyAmount}</span>
           </div>
           <div className="gh-kpi-footer">
-            <span className="gh-tag-up">Up 0%</span>
+            <span className="gh-trend-pill">
+              <TrendingUp size={11} />
+              <span>0%</span>
+            </span>
             <span className="gh-tag-vs">vs. last week</span>
           </div>
         </div>
