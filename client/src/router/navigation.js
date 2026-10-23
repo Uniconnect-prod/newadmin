@@ -1,6 +1,6 @@
 import {
-  LayoutDashboard, Layers, BarChart3, Users, ShieldCheck, ScrollText, Settings,
-  List, PlusCircle, PlugZap, GitMerge, History, CalendarRange, Wallet, UserPlus, RefreshCcw, UserMinus, Globe2
+  LayoutDashboard, Layers, Users, ShieldCheck, ScrollText, Settings,
+  List, PlusCircle, PlugZap, GitMerge, History, CalendarRange, RefreshCcw, AlertTriangle, Globe2
 } from 'lucide-react';
 
 /**
@@ -9,7 +9,11 @@ import {
  * `module` hides report items the active platform does not provide.
  */
 export const NAV = [
-  { id: 'overview', label: 'Overview Dashboard', icon: LayoutDashboard, to: '/overview', keepFilters: true },
+  { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard, to: '/overview', keepFilters: true },
+  { id: 'daily-subscriptions', label: 'Daily Subscriptions', icon: CalendarRange, to: '/reports/settlement', module: 'settlement', keepFilters: true },
+  { id: 'subscribers', label: 'Subscribers', icon: Users, to: '/subscribers', module: 'subscriber_records', keepFilters: true },
+  { id: 'renewal-subscribers', label: 'Renewal Subscribers', icon: RefreshCcw, to: '/reports/renewals', module: 'renewals', keepFilters: true },
+  { id: 'churn-subscribers', label: 'Churn Subscribers', icon: AlertTriangle, to: '/reports/churn', module: 'churn', keepFilters: true },
   {
     id: 'platforms',
     label: 'Platforms',
@@ -24,19 +28,6 @@ export const NAV = [
       { id: 'platforms-history', label: 'Connection & Validation History', icon: History, to: '/platforms/history' }
     ]
   },
-  {
-    id: 'reports',
-    label: 'Analytics & Reports',
-    icon: BarChart3,
-    children: [
-      { id: 'settlement', label: 'Daily Settlement Report', icon: CalendarRange, to: '/reports/settlement', module: 'settlement', keepFilters: true },
-      { id: 'revenue', label: 'Revenue Analytics', icon: Wallet, to: '/reports/revenue', module: 'revenue', keepFilters: true },
-      { id: 'subscriber-analytics', label: 'Subscriber Analytics', icon: UserPlus, to: '/reports/subscribers', module: 'subscribers', keepFilters: true },
-      { id: 'renewals', label: 'Renewals & Billing', icon: RefreshCcw, to: '/reports/renewals', module: 'renewals', keepFilters: true },
-      { id: 'churn', label: 'Deactivations & Churn', icon: UserMinus, to: '/reports/churn', module: 'churn', keepFilters: true }
-    ]
-  },
-  { id: 'subscribers', label: 'Subscribers', icon: Users, to: '/subscribers', module: 'subscriber_records', keepFilters: true },
   { id: 'users', label: 'Users & Access Control', icon: ShieldCheck, to: '/users', permission: 'users:view' },
   { id: 'audit', label: 'Audit Logs', icon: ScrollText, to: '/audit-logs', permission: 'audit:view' },
   { id: 'settings', label: 'Settings', icon: Settings, to: '/settings' }

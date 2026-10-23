@@ -88,28 +88,57 @@ export const OverviewPage = () => {
   const loadKpis = useCallback(async (filters) => {
     try {
       const todayStr = getToday();
-      const [monthRes, todayRes] = await Promise.all([
-        api.get('/reports/overview', { params: { from: filters.from, to: filters.to, fresh: 1 } }),
+      const monthStartStr = getMonthStart();
+      const isDefaultMonth = filters.from === monthStartStr && filters.to === todayStr;
+
+      // Always fetch current month and today's overview
+      const requests = [
+        api.get('/reports/overview', { params: { from: monthStartStr, to: todayStr, fresh: 1 } }),
         api.get('/reports/overview', { params: { from: todayStr, to: todayStr, fresh: 1 } }).catch(() => null)
-      ]);
+      ];
+
+      // If user selected a custom date range different from default month, fetch that range too
+      if (!isDefaultMonth) {
+        requests.push(api.get('/reports/overview', { params: { from: filters.from, to: filters.to, fresh: 1 } }).catch(() => null));
+      }
+
+      const [monthRes, todayRes, customRes] = await Promise.all(requests);
 
       const mKpis = monthRes?.data?.data?.kpis || [];
       const tKpis = todayRes?.data?.data?.kpis || [];
+      const fKpis = (!isDefaultMonth && customRes?.data?.data?.kpis) ? customRes.data.data.kpis : mKpis;
 
-      const newSubs = mKpis.find(k => k.key === 'new_subscribers')?.value ?? monthRes?.data?.data?.totals?.new_subscribers?.value;
-      const todaySubs = tKpis.find(k => k.key === 'new_subscribers')?.value ?? todayRes?.data?.data?.totals?.new_subscribers?.value;
-      const todayRen = tKpis.find(k => k.key === 'renewal_count')?.value ?? todayRes?.data?.data?.totals?.renewal_count?.value;
-      const grandTotal = mKpis.find(k => k.key === 'grand_total')?.value ?? monthRes?.data?.data?.revenue?.[0]?.value;
-      const resCurrency = monthRes?.data?.data?.currency || monthRes?.data?.data?.revenue?.[0]?.currency || null;
+      // 1. Monthly / Selected Subscriber
+      const defaultMonthSubs = mKpis.find(k => k.key === 'subscriber_count')?.value ?? mKpis.find(k => k.key === 'new_subscribers')?.value ?? 0;
+      const filteredSubs = fKpis.find(k => k.key === 'subscriber_count')?.value ?? fKpis.find(k => k.key === 'new_subscribers')?.value ?? defaultMonthSubs;
+
+      // 2. Today Subscriber
+      const todaySubs = tKpis.find(k => k.key === 'new_subscribers')?.value ?? tKpis.find(k => k.key === 'subscriber_count')?.value ?? 0;
+
+      // 3. Today Renewal vs Filtered Renewal
+      // Default: Aaj ka renewal (3,000 from todayRes, na ki pura month ka!)
+      // Jab date change karein: Selected date range ka renewal (from fKpis)
+      const todayRen = tKpis.find(k => k.key === 'renewal_count')?.value ?? 0;
+      const filteredRen = fKpis.find(k => k.key === 'renewal_count')?.value ?? 0;
+      const displayRenewal = isDefaultMonth ? todayRen : filteredRen;
+
+      // 4. Monthly GHCAmount
+      // Default: Current month ka total amount (from mKpis)
+      // Jab date change karein: Selected date range ka amount (from fKpis)
+      const defaultMonthAmount = mKpis.find(k => k.key === 'grand_total')?.value ?? 0;
+      const filteredAmount = fKpis.find(k => k.key === 'grand_total')?.value ?? defaultMonthAmount;
+      const displayAmountVal = isDefaultMonth ? defaultMonthAmount : filteredAmount;
+
+      const resCurrency = monthRes?.data?.data?.currency || 'GHC';
 
       setKpiData({
-        monthlySubscriber: newSubs !== null && newSubs !== undefined ? Number(newSubs) : 0,
-        todaySubscriber: todaySubs !== null && todaySubs !== undefined ? Number(todaySubs) : 0,
-        todayRenewal: todayRen !== null && todayRen !== undefined ? Number(todayRen) : 0,
-        monthlyAmount: grandTotal !== null && grandTotal !== undefined
-          ? Number(grandTotal).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
-          : '0.00',
-        currency: resCurrency
+        monthlySubscriber: Number(filteredSubs !== null && filteredSubs !== undefined ? filteredSubs : 0),
+        todaySubscriber: Number(todaySubs !== null && todaySubs !== undefined ? todaySubs : 0),
+        todayRenewal: Number(displayRenewal !== null && displayRenewal !== undefined ? displayRenewal : 0),
+        monthlyAmount: Number(displayAmountVal !== null && displayAmountVal !== undefined ? displayAmountVal : 0)
+          .toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+        currency: resCurrency,
+        isCustom: !isDefaultMonth
       });
     } catch {
       // keep fallback
@@ -217,7 +246,7 @@ export const OverviewPage = () => {
       {/* 4 Top KPI Cards */}
       <div className="gh-kpi-grid">
         <div className="gh-kpi-card">
-          <h3 className="gh-kpi-title">Monthly Subscriber</h3>
+          <h3 className="gh-kpi-title">{kpiData.isCustom ? 'Subscriber' : 'Monthly Subscriber'}</h3>
           <div className="gh-kpi-value-row">
             <span className="gh-kpi-value">{kpiData.monthlySubscriber.toLocaleString()}</span>
           </div>
@@ -239,7 +268,7 @@ export const OverviewPage = () => {
         </div>
 
         <div className="gh-kpi-card">
-          <h3 className="gh-kpi-title">Today Renewal</h3>
+          <h3 className="gh-kpi-title">{kpiData.isCustom ? 'Renewal' : 'Today Renewal'}</h3>
           <div className="gh-kpi-value-row">
             <span className="gh-kpi-value">{kpiData.todayRenewal.toLocaleString()}</span>
           </div>
@@ -250,10 +279,9 @@ export const OverviewPage = () => {
         </div>
 
         <div className="gh-kpi-card">
-          <h3 className="gh-kpi-title">Monthly {displayCurrency} Amount</h3>
+          <h3 className="gh-kpi-title">{kpiData.isCustom ? (displayCurrency === 'GHS' || displayCurrency === 'GHC' ? 'GHCAmount' : `${displayCurrency}Amount`) : `Monthly ${displayCurrency === 'GHS' || displayCurrency === 'GHC' ? 'GHCAmount' : `${displayCurrency}Amount`}`}</h3>
           <div className="gh-kpi-value-row">
-            <span className="gh-currency-ghc">{displayCurrency}</span>
-            <span className="gh-currency-val">{kpiData.monthlyAmount}</span>
+            <span className="gh-kpi-value">{displayCurrency === 'GHS' ? 'GHC' : displayCurrency}{kpiData.monthlyAmount}</span>
           </div>
           <div className="gh-kpi-footer">
             <span className="gh-tag-up">Up 0%</span>

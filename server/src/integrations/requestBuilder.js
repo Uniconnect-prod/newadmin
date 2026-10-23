@@ -89,12 +89,25 @@ export function buildReportRequest(config, input, timezone = 'UTC') {
   for (const sp of config.static_params || []) query[sp.name] = sp.value;
 
   let endpoint = (input.endpoint === 'export' && config.endpoints?.export) ? config.endpoints.export : config.endpoints.report;
-  if (input.metric && config.endpoints?.[input.metric]) {
-    const override = config.endpoints[input.metric];
+  const metricKey = input.metric ? (config.endpoints?.[input.metric] ? input.metric : input.metric.replace(/([A-Z])/g, '_$1').toLowerCase()) : null;
+  if (metricKey && config.endpoints?.[metricKey]) {
+    const override = config.endpoints[metricKey];
     endpoint = typeof override === 'string' ? { path: override, method: 'GET' } : override;
   }
   const method = endpoint.method || 'GET';
-  let url = `${config.base_url}${endpoint.path}`;
+
+  let rawPath = endpoint.path || '/api/admin/dashboard';
+  let endpointPath = rawPath;
+  if (rawPath.includes('?')) {
+    const [pathPart, queryPart] = rawPath.split('?');
+    endpointPath = pathPart;
+    const embedded = new URLSearchParams(queryPart);
+    for (const [k, v] of embedded.entries()) {
+      query[k] = v;
+    }
+  }
+
+  let url = `${config.base_url}${endpointPath}`;
   let body;
   if (method === 'GET') {
     const qs = new URLSearchParams(query).toString();
@@ -107,5 +120,5 @@ export function buildReportRequest(config, input, timezone = 'UTC') {
   for (const h of config.extra_headers || []) extraHeaders[h.name.toLowerCase()] = h.value;
   if (method === 'POST') extraHeaders['content-type'] = 'application/json';
 
-  return { method, url, body, query, headers: extraHeaders, path: endpoint.path };
+  return { method, url, body, query, headers: extraHeaders, path: endpointPath };
 }

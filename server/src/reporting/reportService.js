@@ -91,7 +91,11 @@ function reconciliation(snapshot, config) {
     const vals = snapshot.daily.rows.map(r => r[key]);
     const dailySum = def.kind === 'currency' ? sumExact(vals, config.currency_decimals) : sumIntegers(vals);
     if (summary === null || dailySum === null) continue;
-    const diff = def.kind === 'currency' ? microsToNumber(toMicros(summary) - toMicros(dailySum), config.currency_decimals) : summary - dailySum;
+    const sumMicros = toMicros(summary);
+    const dayMicros = toMicros(dailySum);
+    const diff = def.kind === 'currency'
+      ? (sumMicros !== null && dayMicros !== null ? microsToNumber(sumMicros - dayMicros, config.currency_decimals) : 0)
+      : (summary ?? 0) - (dailySum ?? 0);
     out.push({ key, label: def.label, summary, dailySum, difference: diff, matches: Math.abs(diff) <= (def.kind === 'currency' ? 0.01 : 0) });
   }
   return out;
@@ -127,7 +131,13 @@ export function buildSettlement(snapshot, config) {
       values[k] = dailyValue(r, k, config);
       const kind = DAILY_FIELDS[k]?.kind;
       if (values[k] !== null && values[k] !== undefined) {
-        running[k] = kind === 'currency' ? microsToNumber((toMicros(running[k] ?? 0) ?? 0n) + toMicros(values[k]), decimals) : (running[k] ?? 0) + values[k];
+        if (kind === 'currency') {
+          const runMicros = toMicros(running[k] ?? 0) ?? 0n;
+          const valMicros = toMicros(values[k]);
+          running[k] = valMicros !== null ? microsToNumber(runMicros + valMicros, decimals) : (running[k] ?? 0);
+        } else {
+          running[k] = (running[k] ?? 0) + (Number(values[k]) || 0);
+        }
       }
       cumulative[k] = running[k] ?? null;
     }
@@ -350,7 +360,8 @@ export async function getConsolidatedOverview(platforms, query, ctx = {}) {
     const cur = p.currency || 'UNSPECIFIED';
     if (!byCurrency.has(cur)) byCurrency.set(cur, { currency: cur, micros: 0n, platforms: [] });
     const entry = byCurrency.get(cur);
-    entry.micros += toMicros(m.value);
+    const valMicros = toMicros(m.value);
+    if (valMicros !== null) entry.micros += valMicros;
     entry.platforms.push(p.platform.code);
   }
   const revenue = [...byCurrency.values()].map(e => ({ currency: e.currency, value: microsToNumber(e.micros, 2), provenance: 'calculated', platforms: e.platforms }));

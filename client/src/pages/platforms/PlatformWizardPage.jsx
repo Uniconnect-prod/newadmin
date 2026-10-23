@@ -41,12 +41,12 @@ import {
 import './Platforms.scss';
 
 const DEFAULT_METRIC_MAPPINGS = {
-  totalSubscribers: '',
-  dailySubscribers: '',
+  totalSubscribers: 'summary.totalSubscribers',
+  dailySubscribers: 'daily[0].newSubscriptions',
   durationSubscribers: '',
   churnSubscribers: '',
-  renewals: '',
-  monthlyIncome: ''
+  renewals: 'summary.renewals',
+  monthlyIncome: 'summary.totalGhsAmount'
 };
 
 const DEFAULT_ENDPOINTS = {
@@ -176,15 +176,17 @@ const PlatformWizardPage = () => {
         setAuthType(intg.auth?.type || 'none');
         setAuthHeader(intg.auth?.header || 'X-API-Key');
 
+        const getP = (v) => (typeof v === 'string' ? v : (v?.path || ''));
+
         setEndpoints({
-          health: intg.endpoints?.health || '/api/health',
-          dashboard: intg.endpoints?.report?.path || intg.endpoints?.dashboard || '/api/admin/dashboard',
-          totalSubscribers: intg.endpoints?.totalSubscribers || '',
-          dailySubscribers: intg.endpoints?.dailySubscribers || '',
-          durationSubscribers: intg.endpoints?.durationSubscribers || '',
-          churnSubscribers: intg.endpoints?.churnSubscribers || '',
-          renewals: intg.endpoints?.renewals || '',
-          monthlyIncome: intg.endpoints?.monthlyIncome || ''
+          health: getP(intg.endpoints?.health) || '/api/health',
+          dashboard: getP(intg.endpoints?.report) || getP(intg.endpoints?.dashboard) || '/api/admin/dashboard',
+          totalSubscribers: getP(intg.endpoints?.totalSubscribers || intg.endpoints?.total_subscribers),
+          dailySubscribers: getP(intg.endpoints?.dailySubscribers || intg.endpoints?.daily_subscribers),
+          durationSubscribers: getP(intg.endpoints?.durationSubscribers || intg.endpoints?.duration_subscribers),
+          churnSubscribers: getP(intg.endpoints?.churnSubscribers || intg.endpoints?.churn_subscribers),
+          renewals: getP(intg.endpoints?.renewals),
+          monthlyIncome: getP(intg.endpoints?.monthlyIncome || intg.endpoints?.monthly_income)
         });
 
         setParams({
@@ -197,13 +199,31 @@ const PlatformWizardPage = () => {
 
         const mapped = intg.field_mappings || intg.mappings?.summary || {};
         setFieldMappings({
-          totalSubscribers: mapped.totalSubscribers || mapped.subscriber_count || '',
-          dailySubscribers: mapped.dailySubscribers || mapped.new_subscribers || '',
-          durationSubscribers: mapped.durationSubscribers || mapped.duration_subscribers || '',
-          churnSubscribers: mapped.churnSubscribers || mapped.deactivations || '',
-          renewals: mapped.renewals || mapped.renewal_count || '',
-          monthlyIncome: mapped.monthlyIncome || mapped.grand_total || ''
+          totalSubscribers: getP(mapped.totalSubscribers) || getP(mapped.subscriber_count) || 'summary.totalSubscribers',
+          dailySubscribers: getP(mapped.dailySubscribers) || getP(mapped.new_subscribers) || 'daily[0].newSubscriptions',
+          durationSubscribers: getP(mapped.durationSubscribers) || getP(mapped.duration_subscribers) || '',
+          churnSubscribers: getP(mapped.churnSubscribers) || getP(mapped.deactivations) || '',
+          renewals: getP(mapped.renewals) || getP(mapped.renewal_count) || 'summary.renewals',
+          monthlyIncome: getP(mapped.monthlyIncome) || getP(mapped.grand_total) || 'summary.totalGhsAmount'
         });
+
+        // Auto-fetch preview metrics for existing platform so table immediately shows verified values
+        if (p.id) {
+          api.post(`/platform-management/${p.id}/inspect`, {
+            code: p.code,
+            name: p.name,
+            business_timezone: p.business_timezone || 'UTC',
+            integration: p.published_integration || p.integration,
+            from: lastWeekStr,
+            to: todayStr,
+            reportType: 'overview'
+          }).then(inspectRes => {
+            if (inspectRes.data?.data?.ok && inspectRes.data.data.preview) {
+              setPreviewData(inspectRes.data.data.preview);
+              setInspectionResult(inspectRes.data.data);
+            }
+          }).catch(() => {});
+        }
       }
       setDirty(false);
     } catch (err) {
@@ -229,15 +249,17 @@ const PlatformWizardPage = () => {
       setAuthType(intg.auth?.type || 'none');
       if (intg.auth?.header) setAuthHeader(intg.auth.header);
 
+      const getP = (v) => (typeof v === 'string' ? v : (v?.path || ''));
+
       setEndpoints({
-        health: intg.endpoints?.health || '/api/health',
-        dashboard: intg.endpoints?.report?.path || intg.endpoints?.dashboard || '/api/admin/dashboard',
-        totalSubscribers: intg.endpoints?.totalSubscribers || '',
-        dailySubscribers: intg.endpoints?.dailySubscribers || '',
-        durationSubscribers: intg.endpoints?.durationSubscribers || '',
-        churnSubscribers: intg.endpoints?.churnSubscribers || '',
-        renewals: intg.endpoints?.renewals || '',
-        monthlyIncome: intg.endpoints?.monthlyIncome || ''
+        health: getP(intg.endpoints?.health) || '/api/health',
+        dashboard: getP(intg.endpoints?.report) || getP(intg.endpoints?.dashboard) || '/api/admin/dashboard',
+        totalSubscribers: getP(intg.endpoints?.totalSubscribers || intg.endpoints?.total_subscribers),
+        dailySubscribers: getP(intg.endpoints?.dailySubscribers || intg.endpoints?.daily_subscribers),
+        durationSubscribers: getP(intg.endpoints?.durationSubscribers || intg.endpoints?.duration_subscribers),
+        churnSubscribers: getP(intg.endpoints?.churnSubscribers || intg.endpoints?.churn_subscribers),
+        renewals: getP(intg.endpoints?.renewals),
+        monthlyIncome: getP(intg.endpoints?.monthlyIncome || intg.endpoints?.monthly_income)
       });
 
       if (intg.params) {
@@ -253,12 +275,12 @@ const PlatformWizardPage = () => {
       if (intg.field_mappings || intg.mappings?.summary) {
         const m = intg.field_mappings || intg.mappings?.summary || {};
         setFieldMappings({
-          totalSubscribers: m.totalSubscribers || m.subscriber_count || '',
-          dailySubscribers: m.dailySubscribers || m.new_subscribers || '',
-          durationSubscribers: m.durationSubscribers || m.duration_subscribers || '',
-          churnSubscribers: m.churnSubscribers || m.deactivations || '',
-          renewals: m.renewals || m.renewal_count || '',
-          monthlyIncome: m.monthlyIncome || m.grand_total || ''
+          totalSubscribers: getP(m.totalSubscribers) || getP(m.subscriber_count),
+          dailySubscribers: getP(m.dailySubscribers) || getP(m.new_subscribers),
+          durationSubscribers: getP(m.durationSubscribers) || getP(m.duration_subscribers),
+          churnSubscribers: getP(m.churnSubscribers) || getP(m.deactivations),
+          renewals: getP(m.renewals) || getP(m.renewal_count),
+          monthlyIncome: getP(m.monthlyIncome) || getP(m.grand_total)
         });
       }
     }
@@ -266,8 +288,21 @@ const PlatformWizardPage = () => {
     toast.success(`Preset "${preset.label}" applied.`);
   };
 
+function normalizeApiPath(path, fallback) {
+  const str = typeof path === 'string' ? path : (path?.path || '');
+  let p = (str || '').trim() || fallback;
+  if (!p.startsWith('/')) p = `/${p}`;
+  if (p === '/admin/dashboard') p = '/api/admin/dashboard';
+  if (p === '/health') p = '/api/health';
+  return p;
+}
+
   // Build the current draft configuration object
   const buildCurrentConfig = useCallback(() => {
+    const healthPath = normalizeApiPath(endpoints.health, '/api/health');
+    const dashboardPath = normalizeApiPath(endpoints.dashboard, '/api/admin/dashboard');
+    const str = (val) => (typeof val === 'string' ? val : (val?.path || '')).trim();
+
     return {
       base_url: baseUrl.trim(),
       auth: {
@@ -275,15 +310,15 @@ const PlatformWizardPage = () => {
         header: authType === 'api_key' ? authHeader : (authType === 'bearer' ? 'Authorization' : undefined)
       },
       endpoints: {
-        health: endpoints.health.trim() || '/api/health',
-        dashboard: endpoints.dashboard.trim() || '/api/admin/dashboard',
-        report: { path: endpoints.dashboard.trim() || '/api/admin/dashboard', method: 'GET' },
-        ...(endpoints.totalSubscribers?.trim() ? { totalSubscribers: endpoints.totalSubscribers.trim() } : {}),
-        ...(endpoints.dailySubscribers?.trim() ? { dailySubscribers: endpoints.dailySubscribers.trim() } : {}),
-        ...(endpoints.durationSubscribers?.trim() ? { durationSubscribers: endpoints.durationSubscribers.trim() } : {}),
-        ...(endpoints.churnSubscribers?.trim() ? { churnSubscribers: endpoints.churnSubscribers.trim() } : {}),
-        ...(endpoints.renewals?.trim() ? { renewals: endpoints.renewals.trim() } : {}),
-        ...(endpoints.monthlyIncome?.trim() ? { monthlyIncome: endpoints.monthlyIncome.trim() } : {})
+        health: healthPath,
+        dashboard: dashboardPath,
+        report: { path: dashboardPath, method: 'GET' },
+        ...(str(endpoints.totalSubscribers) ? { totalSubscribers: str(endpoints.totalSubscribers) } : {}),
+        ...(str(endpoints.dailySubscribers) ? { dailySubscribers: str(endpoints.dailySubscribers) } : {}),
+        ...(str(endpoints.durationSubscribers) ? { durationSubscribers: str(endpoints.durationSubscribers) } : {}),
+        ...(str(endpoints.churnSubscribers) ? { churnSubscribers: str(endpoints.churnSubscribers) } : {}),
+        ...(str(endpoints.renewals) ? { renewals: str(endpoints.renewals) } : {}),
+        ...(str(endpoints.monthlyIncome) ? { monthlyIncome: str(endpoints.monthlyIncome) } : {})
       },
       params: {
         from: params.from.trim() || 'fromDate',
@@ -292,23 +327,52 @@ const PlatformWizardPage = () => {
         ...(params.limit?.trim() ? { limit: params.limit.trim() } : {}),
         ...(params.report_type?.trim() ? { report_type: params.report_type.trim() } : {})
       },
+      report_types: {
+        all: 'all',
+        overview: 'all',
+        subscribers: 'success',
+        renewals: 'renewal',
+        churn: 'churn'
+      },
+      response: {
+        daily_path: 'daily',
+        summary_path: '',
+        records_path: 'data'
+      },
+      pagination: {
+        strategy: 'page',
+        applies_to: 'records',
+        page_start: 1,
+        page_size: 50,
+        max_pages: 500,
+        total_path: 'total'
+      },
       field_mappings: fieldMappings,
       mappings: {
         summary: {
-          subscriber_count: fieldMappings.totalSubscribers || null,
-          new_subscribers: fieldMappings.dailySubscribers || null,
-          duration_subscribers: fieldMappings.durationSubscribers || null,
-          deactivations: fieldMappings.churnSubscribers || null,
-          renewal_count: fieldMappings.renewals || null,
-          grand_total: fieldMappings.monthlyIncome || null
+          ...(fieldMappings.totalSubscribers ? { subscriber_count: { path: fieldMappings.totalSubscribers, type: 'integer' } } : {}),
+          ...(fieldMappings.dailySubscribers ? { new_subscribers: { path: fieldMappings.dailySubscribers, type: 'integer' } } : {}),
+          ...(fieldMappings.durationSubscribers ? { duration_subscribers: { path: fieldMappings.durationSubscribers, type: 'integer' } } : {}),
+          ...(fieldMappings.churnSubscribers ? { deactivations: { path: fieldMappings.churnSubscribers, type: 'integer' } } : {}),
+          ...(fieldMappings.renewals ? { renewal_count: { path: fieldMappings.renewals, type: 'integer' } } : {}),
+          ...(fieldMappings.monthlyIncome ? { grand_total: { path: fieldMappings.monthlyIncome, type: 'decimal' } } : {})
         },
         daily: {
-          subscriber_count: fieldMappings.totalSubscribers || null,
-          new_subscribers: fieldMappings.dailySubscribers || null,
-          duration_subscribers: fieldMappings.durationSubscribers || null,
-          deactivations: fieldMappings.churnSubscribers || null,
-          renewal_count: fieldMappings.renewals || null,
-          grand_total: fieldMappings.monthlyIncome || null
+          report_date: { path: 'date', type: 'date' },
+          new_subscribers: { path: 'newSubscriptions', type: 'integer' },
+          daily_revenue: { path: 'revenueGhs', type: 'decimal' },
+          grand_total: { path: 'revenueGhs', type: 'decimal' }
+        },
+        records: {
+          record_id: { path: 'id', type: 'string' },
+          msisdn: { path: 'msisdn', type: 'string' },
+          offer_code: { path: 'offerCode', type: 'string' },
+          reason: { path: 'reason', type: 'string' },
+          lifecycle: { path: 'lifecycle', type: 'string' },
+          next_billing_date: { path: 'nextBillingDate', type: 'string' },
+          status: { path: 'status', type: 'string' },
+          charging_amount: { path: 'chargingAmount', type: 'decimal' },
+          event_time: { path: 'createdAt', type: 'datetime', format: 'auto' }
         }
       }
     };
@@ -327,9 +391,10 @@ const PlatformWizardPage = () => {
       const url = platform?.id ? `/platform-management/${platform.id}/test-health` : '/platform-management/test-health';
       const body = {
         baseUrl: baseUrl.trim(),
-        healthPath: endpoints.health.trim() || '/api/health',
+        healthPath: normalizeApiPath(endpoints.health, '/api/health'),
+        authType,
         token: authType === 'bearer' ? secrets.token : undefined,
-        apiKey: authType === 'api_key' ? secrets.api_key : undefined,
+        apiKey: (authType === 'api_key' || authType === 'hmac_sha256') ? secrets.api_key : undefined,
         apiKeyHeader: authHeader
       };
 
@@ -370,7 +435,7 @@ const PlatformWizardPage = () => {
       const config = buildCurrentConfig();
       const submittedSecrets = {};
       if (authType === 'bearer' && secrets.token) submittedSecrets.token = secrets.token;
-      if (authType === 'api_key' && secrets.api_key) submittedSecrets.api_key = secrets.api_key;
+      if ((authType === 'api_key' || authType === 'hmac_sha256') && secrets.api_key) submittedSecrets.api_key = secrets.api_key;
       if (authType === 'basic') {
         if (secrets.username) submittedSecrets.username = secrets.username;
         if (secrets.password) submittedSecrets.password = secrets.password;
@@ -416,11 +481,16 @@ const PlatformWizardPage = () => {
           setDetectionWarnings(data.detection.warnings);
         }
       } else {
-        toast.error(`API test returned an error: ${data.error?.message || 'Check request configuration'}`);
+        const errMsg = data.error?.detail ? `${data.error.message} (${data.error.detail})` : (data.error?.message || 'Check request configuration');
+        toast.error(`API test returned an error: ${errMsg}`);
       }
     } catch (err) {
       const desc = describeError(err);
-      toast.error(`API test failed: ${desc.message}`);
+      const errors = err.response?.data?.errors;
+      const detail = errors?.length
+        ? errors.map(e => `${e.field}: ${e.message}`).join(', ')
+        : desc.message;
+      toast.error(`API test failed: ${detail}`);
     } finally {
       setTestApiRunning(false);
     }
@@ -472,7 +542,7 @@ const PlatformWizardPage = () => {
       const config = buildCurrentConfig();
       const submittedSecrets = {};
       if (authType === 'bearer' && secrets.token) submittedSecrets.token = secrets.token;
-      if (authType === 'api_key' && secrets.api_key) submittedSecrets.api_key = secrets.api_key;
+      if ((authType === 'api_key' || authType === 'hmac_sha256') && secrets.api_key) submittedSecrets.api_key = secrets.api_key;
       if (authType === 'basic') {
         if (secrets.username) submittedSecrets.username = secrets.username;
         if (secrets.password) submittedSecrets.password = secrets.password;
@@ -481,6 +551,7 @@ const PlatformWizardPage = () => {
       if (isNew) {
         const body = {
           ...details,
+          enabled_modules: details.enabled_modules?.length ? details.enabled_modules : ['overview', 'settlement', 'revenue', 'subscribers', 'renewals', 'churn', 'subscriber_records'],
           code: details.code.trim().toUpperCase(),
           country: details.country || null,
           currency: details.currency ? details.currency.toUpperCase() : null,
@@ -499,6 +570,7 @@ const PlatformWizardPage = () => {
         const { code, ...detailsRest } = details;
         await api.put(`/platform-management/${platform.id}`, {
           ...detailsRest,
+          enabled_modules: details.enabled_modules?.length ? details.enabled_modules : ['overview', 'settlement', 'revenue', 'subscribers', 'renewals', 'churn', 'subscriber_records'],
           country: details.country || null,
           currency: details.currency ? details.currency.toUpperCase() : null
         });
@@ -517,7 +589,11 @@ const PlatformWizardPage = () => {
       }
     } catch (err) {
       const desc = describeError(err);
-      toast.error(`Save failed: ${desc.message}`);
+      const errors = err.response?.data?.errors;
+      const detail = errors?.length
+        ? errors.map(e => `${e.field}: ${e.message}`).join(', ')
+        : desc.message;
+      toast.error(`Save failed: ${detail}`);
     } finally {
       setSaving(false);
     }
@@ -591,15 +667,15 @@ const PlatformWizardPage = () => {
   // Evaluate fields client-side against previewData
   const evaluatedRows = useMemo(() => {
     return CORE_METRICS.map(metric => {
-      const path = fieldMappings[metric.id] || '';
-      if (!path.trim()) {
+      const path = (fieldMappings[metric.id] || '').trim();
+      if (!path) {
         return {
           ...metric,
           path: '',
           configured: false,
           value: null,
           valid: null,
-          statusText: 'Unmapped'
+          statusText: 'Optional'
         };
       }
 
@@ -609,8 +685,8 @@ const PlatformWizardPage = () => {
           path,
           configured: true,
           value: null,
-          valid: true,
-          statusText: 'Configured'
+          valid: 'untested',
+          statusText: 'Awaiting Test API'
         };
       }
 
@@ -645,7 +721,7 @@ const PlatformWizardPage = () => {
         value: valCheck.parsed,
         formatted: valCheck.parsed.toLocaleString(),
         valid: true,
-        statusText: 'Valid'
+        statusText: `Verified: ${valCheck.parsed.toLocaleString()}`
       };
     });
   }, [fieldMappings, previewData]);
@@ -918,11 +994,44 @@ const PlatformWizardPage = () => {
               }}
             >
               <option value="none">None / Public API</option>
+              <option value="hmac_sha256">HMAC SHA-256 (Dashboard API Key)</option>
               <option value="bearer">Bearer Token</option>
               <option value="api_key">API Key Header</option>
               <option value="basic">HTTP Basic Auth</option>
             </select>
           </div>
+
+          {authType === 'hmac_sha256' && (
+            <div className="field" style={{ gridColumn: 'span 2' }}>
+              <label className="label" htmlFor="hmac-api-key">
+                Platform Dashboard API Key {platform?.secrets_configured?.api_key && <span className="badge badge--success" style={{ fontSize: '10px', marginLeft: 6 }}>Stored in Vault</span>}
+              </label>
+              <div style={{ position: 'relative' }}>
+                <input
+                  id="hmac-api-key"
+                  type={showSecretText ? 'text' : 'password'}
+                  className="input font-mono"
+                  placeholder={platform?.secrets_configured?.api_key ? '•••••••••••••••• (Leave blank to keep saved key)' : 'Enter Dashboard API Key for this platform'}
+                  value={secrets.api_key}
+                  onChange={e => {
+                    setSecrets(s => ({ ...s, api_key: e.target.value }));
+                    setDirty(true);
+                  }}
+                />
+                <button
+                  type="button"
+                  className="btn btn--ghost btn--sm"
+                  style={{ position: 'absolute', right: 4, top: 4, padding: '4px 8px' }}
+                  onClick={() => setShowSecretText(!showSecretText)}
+                >
+                  {showSecretText ? <EyeOff size={14} /> : <Eye size={14} />}
+                </button>
+              </div>
+              <span style={{ fontSize: '11px', color: '#64748b', marginTop: '4px', display: 'block' }}>
+                The backend signs every request to this platform with this key using HMAC SHA-256 (<code>x-timestamp</code> and <code>x-signature</code> headers). Key is encrypted at rest in the backend.
+              </span>
+            </div>
+          )}
 
           {authType === 'bearer' && (
             <div className="field">
@@ -1387,15 +1496,106 @@ const PlatformWizardPage = () => {
           </div>
         )}
 
+        {/* Helper Banner when API is not tested yet */}
+        {!previewData && (
+          <div style={{
+            background: '#eff6ff',
+            border: '1px solid #bfdbfe',
+            borderRadius: 8,
+            padding: '12px 16px',
+            marginBottom: 16,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: 12
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <Activity size={18} style={{ color: '#2563eb', flexShrink: 0 }} />
+              <div>
+                <strong style={{ fontSize: 13, color: '#1e40af', display: 'block' }}>
+                  Live Data Verification ke liye "Test API" karein
+                </strong>
+                <span style={{ fontSize: 12, color: '#3b82f6' }}>
+                  Jaise hi API test hogi, aap jo bhi parameter (JSON path) daalenge wo turant live response se verify hoga ki data aa raha hai ya nahi.
+                </span>
+              </div>
+            </div>
+            <button
+              type="button"
+              className="btn btn--primary btn--sm"
+              style={{ whiteSpace: 'nowrap' }}
+              onClick={handleTestApi}
+              disabled={testApiRunning}
+            >
+              {testApiRunning ? <Loader2 size={13} className="spin" /> : <Activity size={13} />}
+              Test API Now
+            </button>
+          </div>
+        )}
+
+        {/* Quick-Pick Detected Fields Pill List when response is available */}
+        {previewData && inspectionResult?.detection?.detectedMappings && Object.keys(inspectionResult.detection.detectedMappings).length > 0 && (
+          <div style={{
+            background: '#f8fafc',
+            border: '1px solid #e2e8f0',
+            borderRadius: 8,
+            padding: '10px 14px',
+            marginBottom: 16
+          }}>
+            <div style={{ fontSize: 12, fontWeight: 600, color: '#475569', marginBottom: 6, display: 'flex', alignItems: 'center', gap: 6 }}>
+              <Sparkles size={14} style={{ color: '#8b5cf6' }} />
+              API Response me se detected fields (Click karke direct assign kar sakte hain):
+            </div>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+              {Object.entries(inspectionResult.detection.detectedMappings).map(([metricKey, detectedPath]) => {
+                const val = inspectionResult.detection.detectedValues?.[metricKey];
+                const metricDef = CORE_METRICS.find(m => m.id === metricKey);
+                return (
+                  <button
+                    key={metricKey}
+                    type="button"
+                    className="btn btn--ghost btn--sm"
+                    style={{
+                      background: '#ffffff',
+                      border: '1px solid #cbd5e1',
+                      padding: '4px 10px',
+                      fontSize: 12,
+                      fontFamily: 'monospace',
+                      borderRadius: 6,
+                      color: '#0f172a',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 6
+                    }}
+                    onClick={() => {
+                      setFieldMappings(prev => ({ ...prev, [metricKey]: detectedPath }));
+                      setDirty(true);
+                      toast.success(`Set ${metricDef?.label || metricKey} = ${detectedPath}`);
+                    }}
+                  >
+                    <span style={{ color: '#64748b' }}>{metricDef?.label || metricKey}:</span>
+                    <strong style={{ color: '#0284c7' }}>{detectedPath}</strong>
+                    {val !== undefined && (
+                      <span style={{ color: '#059669', fontWeight: 700, background: '#ecfdf5', padding: '1px 5px', borderRadius: 4 }}>
+                        {typeof val === 'number' ? val.toLocaleString() : val}
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
         {/* Simple Field Mapping Table */}
         <div>
           <table className="simple-mapping-table">
             <thead>
               <tr>
-                <th style={{ width: '28%' }}>Dashboard Metric</th>
+                <th style={{ width: '26%' }}>Dashboard Metric</th>
                 <th style={{ width: '38%' }}>JSON Field Path (Dot Notation)</th>
-                <th style={{ width: '18%' }}>Evaluated Value</th>
-                <th style={{ width: '16%' }}>Validation Status</th>
+                <th style={{ width: '16%' }}>Evaluated Value</th>
+                <th style={{ width: '20%' }}>Verification Status</th>
               </tr>
             </thead>
             <tbody>
@@ -1417,13 +1617,14 @@ const PlatformWizardPage = () => {
                         setDirty(true);
                       }}
                       style={{
-                        borderColor: row.path && row.valid === false ? '#ef4444' : (row.path && row.valid ? '#10b981' : undefined)
+                        borderColor: row.path && row.valid === false ? '#ef4444' : (row.path && row.valid === true ? '#10b981' : undefined),
+                        boxShadow: row.path && row.valid === true ? '0 0 0 1px #10b981' : undefined
                       }}
                     />
                   </td>
                   <td>
                     {row.formatted !== undefined && row.formatted !== null ? (
-                      <span style={{ fontWeight: 700, color: '#047857', fontFamily: 'monospace', fontSize: 13 }}>
+                      <span style={{ fontWeight: 700, color: '#047857', fontFamily: 'monospace', fontSize: 13, background: '#ecfdf5', padding: '2px 8px', borderRadius: 4, border: '1px solid #a7f3d0', display: 'inline-block' }}>
                         {row.formatted}
                       </span>
                     ) : (
@@ -1433,14 +1634,26 @@ const PlatformWizardPage = () => {
                   <td>
                     <div className="status-cell">
                       {row.valid === true && (
-                        <span style={{ color: '#10b981', display: 'flex', alignItems: 'center', gap: 4, fontWeight: 600 }}>
-                          <Check size={14} /> Valid
+                        <span style={{ color: '#059669', display: 'flex', alignItems: 'center', gap: 5, fontWeight: 600, fontSize: 12 }}>
+                          <Check size={14} style={{ color: '#059669', strokeWidth: 2.5 }} /> Verified ({row.formatted})
                         </span>
                       )}
                       {row.valid === false && (
-                        <span style={{ color: '#ef4444', display: 'flex', alignItems: 'center', gap: 4, fontSize: 11 }}>
+                        <span style={{ color: '#ef4444', display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, fontWeight: 500 }}>
                           <AlertTriangle size={14} /> {row.statusText}
                         </span>
+                      )}
+                      {row.valid === 'untested' && (
+                        <button
+                          type="button"
+                          className="btn btn--secondary btn--sm"
+                          style={{ fontSize: 11, padding: '2px 8px', height: 24, gap: 4 }}
+                          onClick={handleTestApi}
+                          disabled={testApiRunning}
+                        >
+                          {testApiRunning ? <Loader2 size={12} className="spin" /> : <Activity size={12} />}
+                          Verify
+                        </button>
                       )}
                       {row.valid === null && (
                         <span style={{ color: '#94a3b8', fontSize: 11 }}>Optional</span>

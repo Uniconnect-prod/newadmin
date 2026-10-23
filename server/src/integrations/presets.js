@@ -57,14 +57,14 @@ export const PRESETS = [
     },
     integration: {
       adapter: 'generic-json',
-      base_url: 'https://ghsuperwinnings.com/api',
+      base_url: 'https://ghsuperwinnings.com',
       timeout_ms: 15000,
       rate_limit_per_minute: 30,
       default_range_days: 14,
       auth: {
-        type: 'bearer'
+        type: 'hmac_sha256'
       },
-      endpoints: { report: { path: '/admin/dashboard', method: 'GET' } },
+      endpoints: { report: { path: '/api/admin/dashboard', method: 'GET' }, health: { path: '/api/health', method: 'GET' } },
       params: { from: 'fromDate', to: 'toDate', report_type: 'report', page: 'page', limit: 'limit' },
       date_param_format: 'YYYY-MM-DD',
       end_date_mode: 'inclusive',

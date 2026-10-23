@@ -159,7 +159,16 @@ export class PlatformApiClient {
 
     const loginRequest = spec => this.rawRequest({ ...spec, signal }, 'LOGIN');
     const send = async (forceRefresh) => {
-      const auth = await resolveAuthHeaders({ cacheKey: this.authKey, config: this.config, secrets: this.secrets, request: loginRequest, forceRefresh });
+      const auth = await resolveAuthHeaders({
+        cacheKey: this.authKey,
+        config: this.config,
+        secrets: this.secrets,
+        request: loginRequest,
+        forceRefresh,
+        method: built.method,
+        url: built.url,
+        path: built.path
+      });
       return this.rawRequest(
         { method: built.method, url: built.url, body: built.body, headers: { ...built.headers, ...auth.headers }, sensitiveHeaders: auth.sensitiveHeaders, signal },
         kind

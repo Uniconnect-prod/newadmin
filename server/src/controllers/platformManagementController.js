@@ -1,10 +1,11 @@
+import crypto from 'crypto';
 import { platformRepository, toAdminView, normalizeModules, normalizeStatus, REPORTING_MODULES } from '../repositories/platformRepository.js';
 import { integrationLogRepository } from '../repositories/integrationLogRepository.js';
 import { settingsRepository } from '../repositories/settingsRepository.js';
 import { mappingRepository } from '../repositories/mappingRepository.js';
 import { executeHealthCheck, evaluateMetricMappings } from '../integrations/metricAutoDetector.js';
 import { validateIntegrationConfig, AUTH_TYPES, PAGINATION_STRATEGIES, DATE_PARAM_FORMATS } from '../integrations/configSchema.js';
-import { mergeSecrets, isVaultConfigured, SECRET_FIELDS } from '../integrations/secretVault.js';
+import { mergeSecrets, decryptAll, isVaultConfigured, SECRET_FIELDS } from '../integrations/secretVault.js';
 import { inspectRequest } from '../integrations/inspector.js';
 import { validateIntegration } from '../integrations/validator.js';
 import { describeCapabilities } from '../integrations/capabilities.js';
@@ -264,7 +265,23 @@ export const platformManagementController = {
     if (!baseUrl) throw badRequest('Base URL is required to run a health check.');
     await autoApproveHost(baseUrl, req.user?.id);
 
-    if (req.body?.token) {
+    const effectiveAuthType = req.body?.authType || req.body?.integration?.auth?.type || platform?.integration?.auth?.type;
+    if (effectiveAuthType === 'hmac_sha256') {
+      let key = req.body?.apiKey;
+      if (!key && platform?.integration_secrets) {
+        const decrypted = decryptAll(platform.integration_secrets);
+        key = decrypted?.api_key;
+      }
+      if (key) {
+        const timestamp = String(Math.floor(Date.now() / 1000));
+        let p = String(healthPath || '/api/health').trim();
+        if (!p.startsWith('/')) p = `/${p}`;
+        const payload = `${timestamp}\nGET\n${p}`;
+        const signature = crypto.createHmac('sha256', key).update(payload).digest('hex');
+        headers['x-timestamp'] = timestamp;
+        headers['x-signature'] = signature;
+      }
+    } else if (req.body?.token) {
       headers['Authorization'] = `Bearer ${req.body.token}`;
     } else if (req.body?.apiKey) {
       headers[req.body.apiKeyHeader || 'X-API-Key'] = req.body.apiKey;
@@ -353,7 +370,10 @@ export const platformManagementController = {
       if (override?.base_url) await autoApproveHost(override.base_url, req.user.id);
       else if (platform?.integration?.base_url) await autoApproveHost(platform.integration.base_url, req.user.id);
     }
-    const client = await createPlatformClient(platform, { mode: 'draft', draftOverride: override, userId: req.user.id });
+    const submittedSecrets = (req.body.secrets && typeof req.body.secrets === 'object')
+      ? Object.fromEntries(SECRET_FIELDS.filter(f => typeof req.body.secrets[f] === 'string' && req.body.secrets[f].length > 0).map(f => [f, req.body.secrets[f]]))
+      : null;
+    const client = await createPlatformClient(platform, { mode: 'draft', draftOverride: override, draftSecrets: submittedSecrets, userId: req.user.id });
     const reportType = ['overview', 'subscribers', 'renewals', 'churn'].includes(req.body?.reportType) ? req.body.reportType : 'overview';
     const result = await inspectRequest(client, { reportType, from: range.from, to: range.to, page: req.body?.page });
     result.sampleRange = { from: range.from, to: range.to, timezone: range.timezone };

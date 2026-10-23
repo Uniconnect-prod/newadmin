@@ -54,10 +54,13 @@ export function hasSecrets(platform) {
  *  mode 'published' – the activated configuration used for reporting (default)
  *  mode 'draft'     – the editable configuration, optionally overridden in-memory by the wizard
  */
-export async function createPlatformClient(platform, { mode = 'published', draftOverride = null, userId = null } = {}) {
+export async function createPlatformClient(platform, { mode = 'published', draftOverride = null, draftSecrets = null, userId = null } = {}) {
   const config = mode === 'draft' ? (draftOverride || platform.integration) : (platform.published_integration || platform.integration);
   if (!config || !config.base_url) throw new IntegrationError('INTEGRATION_NOT_CONFIGURED');
-  const secrets = hasSecrets(platform) ? decryptAll(platform.integration_secrets) : {};
+  let secrets = hasSecrets(platform) ? decryptAll(platform.integration_secrets) : {};
+  if (draftSecrets && typeof draftSecrets === 'object') {
+    secrets = { ...secrets, ...draftSecrets };
+  }
   const policy = await getOutboundPolicy();
   const cacheScope = mode === 'published'
     ? `${platform.id}:${platform.published_config_hash}:${platform.integration_secrets?.updated_at ? new Date(platform.integration_secrets.updated_at).getTime() : 0}`

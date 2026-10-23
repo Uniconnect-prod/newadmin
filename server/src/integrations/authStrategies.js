@@ -10,9 +10,11 @@ import { getPath } from './jsonPath.js';
  *  none        – no authentication
  *  bearer      – static token sent as "Authorization: Bearer <token>"
  *  api_key     – static key sent in an admin-configured header (e.g. X-API-Key)
+ *  hmac_sha256 – HMAC SHA-256 signature with x-timestamp and x-signature headers
  *  login_token – POST username/password to a login endpoint, read the token from the JSON
  *                response (token_path) or from a Set-Cookie header (cookie_name), then send
  *                it as a Bearer token or Cookie. Re-login happens once on HTTP 401.
+ *  basic       – HTTP Basic Auth using username and password
  */
 
 const tokenCache = new Map();
@@ -92,7 +94,16 @@ async function login({ config, secrets, request }) {
  * Resolve authentication headers for a request.
  * Returns { headers, sensitiveHeaders } — sensitive headers are stripped on cross-origin redirects.
  */
-export async function resolveAuthHeaders({ cacheKey, config, secrets, request, forceRefresh = false }) {
+export async function resolveAuthHeaders({
+  cacheKey,
+  config,
+  secrets = {},
+  request,
+  forceRefresh = false,
+  method = 'GET',
+  url = null,
+  path = null
+}) {
   const auth = config.auth || { type: 'none' };
   switch (auth.type) {
     case 'none':
@@ -131,6 +142,46 @@ export async function resolveAuthHeaders({ cacheKey, config, secrets, request, f
     case 'api_key':
       if (!secrets.api_key) throw new IntegrationError('AUTH_FAILED', 'No API key has been saved for this platform.');
       return { headers: { [auth.header_name.toLowerCase()]: secrets.api_key }, sensitiveHeaders: [auth.header_name.toLowerCase()] };
+    case 'hmac_sha256': {
+      const apiKey = secrets.api_key;
+      if (!apiKey) throw new IntegrationError('AUTH_FAILED', 'No Dashboard API key has been saved for this platform.');
+
+      const timestamp = String(Math.floor(Date.now() / 1000));
+      const reqMethod = String(method || 'GET').toUpperCase();
+      let reqPath = '/';
+      if (url) {
+        try {
+          const parsed = new URL(url);
+          reqPath = parsed.pathname + (parsed.search || '');
+        } catch {
+          reqPath = path || '/';
+        }
+      } else if (path) {
+        reqPath = path;
+      }
+      if (!reqPath.startsWith('/')) reqPath = `/${reqPath}`;
+
+      const payload = `${timestamp}\n${reqMethod}\n${reqPath}`;
+      const signature = crypto.createHmac('sha256', apiKey).update(payload).digest('hex');
+
+      return {
+        headers: {
+          'x-timestamp': timestamp,
+          'x-signature': signature
+        },
+        sensitiveHeaders: ['x-signature', 'x-timestamp']
+      };
+    }
+    case 'basic': {
+      if (!secrets.username || !secrets.password) {
+        throw new IntegrationError('AUTH_FAILED', 'Username and password must be configured for HTTP Basic Auth.');
+      }
+      const creds = Buffer.from(`${secrets.username}:${secrets.password}`).toString('base64');
+      return {
+        headers: { authorization: `Basic ${creds}` },
+        sensitiveHeaders: ['authorization']
+      };
+    }
     case 'login_token': {
       const fp = fingerprint(config, secrets);
       let entry = tokenCache.get(cacheKey);

@@ -25,7 +25,8 @@ export const DAILY_FIELDS = {
   failed_charges: { label: 'Failed charges', type: 'integer', kind: 'count' },
   deactivations: { label: 'Deactivations', type: 'integer', kind: 'count' },
   subscriber_count: { label: 'Total subscribers', type: 'integer', kind: 'stock' },
-  active_subscribers: { label: 'Active subscribers', type: 'integer', kind: 'stock' }
+  active_subscribers: { label: 'Active subscribers', type: 'integer', kind: 'stock' },
+  duration_subscribers: { label: 'Duration subscribers', type: 'integer', kind: 'stock', description: 'Active subscribers across duration window.' }
 };
 
 export const SUMMARY_FIELDS = {
@@ -33,6 +34,7 @@ export const SUMMARY_FIELDS = {
   activation_parking: { label: 'Activation parking', type: 'integer', kind: 'count' },
   subscriber_count: { label: 'Total subscribers', type: 'integer', kind: 'stock' },
   active_subscribers: { label: 'Active subscribers', type: 'integer', kind: 'stock' },
+  duration_subscribers: { label: 'Duration subscribers', type: 'integer', kind: 'stock', description: 'Active subscribers across duration window.' },
   renewal_count: { label: 'Renewals', type: 'integer', kind: 'count' },
   failed_renewal_count: { label: 'Failed renewals', type: 'integer', kind: 'count' },
   successful_charges: { label: 'Successful charges', type: 'integer', kind: 'count' },

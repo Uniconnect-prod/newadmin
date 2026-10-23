@@ -53,48 +53,49 @@ export const CORE_METRICS = [
     label: 'Total Subscribers',
     description: 'Total active subscriber base',
     canonical: 'subscriber_count',
-    example: 'data.totalSubscribers'
+    example: 'summary.totalSubscribers'
   },
   {
     id: 'dailySubscribers',
     label: 'Daily Subscribers',
     description: 'New subscriptions for the period or day',
     canonical: 'new_subscribers',
-    example: 'data.dailySubscribers'
+    example: 'daily[0].newSubscriptions'
   },
   {
     id: 'durationSubscribers',
     label: 'Duration Subscribers',
     description: 'Subscribers active across duration / validity window',
     canonical: 'duration_subscribers',
-    example: 'data.durationSubscribers'
+    example: 'summary.durationSubscribers'
   },
   {
     id: 'churnSubscribers',
     label: 'Churn Subscribers',
     description: 'Unsubscriptions / deactivations / churned accounts',
     canonical: 'deactivations',
-    example: 'data.churnSubscribers'
+    example: 'summary.churnSubscribers'
   },
   {
     id: 'renewals',
     label: 'Renewals',
     description: 'Successful recurring renewals',
     canonical: 'renewal_count',
-    example: 'data.renewals'
+    example: 'summary.renewals'
   },
   {
     id: 'monthlyIncome',
     label: 'Monthly Income',
     description: 'Total revenue / monthly income generated',
     canonical: 'grand_total',
-    example: 'data.monthlyIncome'
+    example: 'summary.totalGhsAmount'
   }
 ];
 
 export function resolveClientPath(obj, path) {
   if (!path || typeof path !== 'string' || !obj) return { found: false, value: null };
-  const parts = path.trim().split('.');
+  const cleaned = path.trim().replace(/^\$\.?/, '').replace(/\[(\d+)\]/g, (m, d) => '.' + d);
+  const parts = cleaned.split('.').filter(Boolean);
   let current = obj;
   for (const part of parts) {
     if (current === null || current === undefined || typeof current !== 'object') {

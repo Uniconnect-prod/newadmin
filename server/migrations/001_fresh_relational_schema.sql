@@ -179,7 +179,7 @@ CREATE TABLE IF NOT EXISTS platform_api_configs (
 CREATE INDEX IF NOT EXISTS idx_platform_api_configs_platform ON platform_api_configs (platform_id);
 
 -- --------------------------------------------------------------------
--- 8. platform_api_credentials (Secure encrypted credential store)
+-- 8. platform_api_cridentials (Secure encrypted credential store)
 -- --------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS platform_api_credentials (
   id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,

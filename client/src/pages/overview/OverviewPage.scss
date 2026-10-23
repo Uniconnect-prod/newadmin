@@ -21,46 +21,35 @@
   }
 
   .gh-kpi-card {
-    background: $white;
-    border: 1px solid $border;
-    border-radius: $radius-lg;
-    padding: 20px 22px;
-    box-shadow: $shadow-xs;
+    background: #ffffff;
+    border: 1px solid #dce5f0;
+    border-radius: 9px;
+    padding: 22px 28px;
+    box-shadow: 0 16px 42px rgba(15, 23, 42, 0.05);
     display: flex;
     flex-direction: column;
     justify-content: space-between;
-    position: relative;
-    overflow: hidden;
+    min-height: 138px;
+    box-sizing: border-box;
     transition: transform $t-fast, box-shadow $t-fast, border-color $t-fast;
 
-    &::before {
-      content: '';
-      position: absolute;
-      left: 0;
-      top: 0;
-      bottom: 0;
-      width: 4px;
-      background: $primary;
-      border-radius: 4px 0 0 4px;
-    }
-
     &:hover {
-      box-shadow: $shadow-md;
-      border-color: $brand-300;
+      box-shadow: 0 20px 48px rgba(15, 23, 42, 0.09);
+      border-color: #cbd5e1;
       transform: translateY(-1px);
     }
   }
 
   .gh-kpi-title {
-    font-size: 14.5px;
-    font-weight: 700;
-    color: $brand-600; // Deep site brand blue
+    font-size: 17px;
+    font-weight: 800;
+    color: #1683f5; // Exact blue
     margin: 0;
     letter-spacing: -0.01em;
   }
 
   .gh-kpi-value-row {
-    margin-top: 14px;
+    margin-top: 12px;
     margin-bottom: 8px;
     display: flex;
     align-items: baseline;
@@ -68,44 +57,31 @@
   }
 
   .gh-kpi-value {
-    font-size: 38px;
-    font-weight: 800;
-    color: $primary; // Primary site brand blue (#0170B9)
+    font-size: 36px;
+    font-weight: 600;
     line-height: 1;
-    letter-spacing: -0.03em;
-    font-variant-numeric: tabular-nums;
-  }
-
-  .gh-currency-ghc {
-    color: $primary; // Unified site brand blue (#0170B9)
-    font-size: 34px;
-    font-weight: 800;
-    letter-spacing: -0.03em;
-    margin-right: 6px;
-  }
-
-  .gh-currency-val {
-    color: $primary; // Unified site brand blue (#0170B9)
-    font-size: 38px;
-    font-weight: 800;
-    letter-spacing: -0.03em;
-    font-variant-numeric: tabular-nums;
+    letter-spacing: -0.02em;
+    background: linear-gradient(90deg, #ff7a2f, #13a8ff 52%, #8b2cff);
+    background-clip: text;
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    display: inline-block;
   }
 
   .gh-kpi-footer {
     display: flex;
     align-items: center;
     gap: 5px;
-    font-size: 13px;
+    font-size: 14px;
     margin-top: 4px;
 
     .gh-tag-up {
-      color: $emerald-600; // Site semantic green
+      color: #03c99a; // Vibrant teal/green
       font-weight: 700;
     }
 
     .gh-tag-vs {
-      color: $text-muted; // Muted slate
+      color: #7b4cf0; // Purple
       font-weight: 400;
     }
   }

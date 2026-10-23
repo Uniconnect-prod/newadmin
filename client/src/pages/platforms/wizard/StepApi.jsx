@@ -16,6 +16,7 @@ function hostMatches(entry, host, port) {
 const SECRET_LABELS = {
   bearer: [['token', 'Bearer token']],
   api_key: [['api_key', 'API key']],
+  hmac_sha256: [['api_key', 'Dashboard API Key (HMAC SHA-256)']],
   login_token: [['username', 'Username / email'], ['password', 'Password']]
 };
 
@@ -101,6 +102,7 @@ export const StepApi = ({ meta, platform, integration, updateIntegration, secret
           <Field label="Authentication type" error={fieldErrors['auth.type']} htmlFor="api-auth">
             <select id="api-auth" className="select" value={authType} onChange={e => set('auth', { ...integration.auth, type: e.target.value })}>
               <option value="none">None (public API)</option>
+              <option value="hmac_sha256">HMAC SHA-256 (Dashboard Key)</option>
               <option value="bearer">Bearer token</option>
               <option value="api_key">API key in a header</option>
               <option value="login_token">Username/password login → token</option>

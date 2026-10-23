@@ -87,7 +87,7 @@ export const AppShell = () => {
           {collapsed ? (
             <span className="sidebar__icon-tile"><img src="/brand/unisolution_icon.png" alt="UNI.SOLUTION" /></span>
           ) : (
-            <img className="sidebar__logo" src="/brand/unisolution_logo_dark.png" alt="UNI.SOLUTION" />
+            <img className="sidebar__logo" src="/brand/unisolution_logo.png" alt="UNI.SOLUTION" />
           )}
           <button type="button" className="sidebar__mobile-close" onClick={() => setMobileOpen(false)} aria-label="Close navigation"><X size={18} /></button>
         </div>

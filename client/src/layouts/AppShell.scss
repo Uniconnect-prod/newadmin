@@ -20,7 +20,7 @@
 // Sidebar ------------------------------------------------------------------------------
 .sidebar {
   position: fixed; inset: 0 auto 0 0; z-index: 200; width: $sidebar-width; display: flex; flex-direction: column;
-  background: $bg-sidebar; color: $text-on-dark; border-right: 1px solid rgba(255, 255, 255, 0.04);
+  background: #ffffff; color: $slate-800; border-right: 1px solid #e2e8f0;
   transition: width $t-normal, transform $t-normal;
   .shell--collapsed & { width: $sidebar-collapsed-width; }
   @include below($bp-md) {
@@ -28,37 +28,38 @@
     &.is-mobile-open { transform: none; box-shadow: $shadow-lg; }
   }
 
-  &__brand { display: flex; align-items: center; justify-content: space-between; height: $topbar-height; padding: 0 $space-5; border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  &__brand { display: flex; align-items: center; justify-content: space-between; height: $topbar-height; padding: 0 $space-5; border-bottom: 1px solid #e2e8f0;
     .shell--collapsed & { justify-content: center; padding: 0; } }
   &__logo { height: 34px; width: auto; }
-  &__icon-tile { width: 40px; height: 40px; border-radius: $radius-md; background: $white; display: grid; place-items: center; overflow: hidden; img { width: 30px; height: 30px; } }
-  &__mobile-close { display: none; color: $slate-400; @include below($bp-md) { display: inline-flex; } }
-  &__product { padding: $space-4 $space-5 $space-2; @include label-caps; color: $brand-300; }
+  &__icon-tile { width: 40px; height: 40px; border-radius: $radius-md; background: $slate-100; display: grid; place-items: center; overflow: hidden; img { width: 30px; height: 30px; } }
+  &__mobile-close { display: none; color: $slate-500; @include below($bp-md) { display: inline-flex; } }
+  &__product { padding: $space-4 $space-5 $space-2; @include label-caps; color: $brand-500; }
 
-  &__nav { flex: 1; overflow-y: auto; padding: $space-2 $space-3 $space-4; display: flex; flex-direction: column; gap: 2px;
+  &__nav { flex: 1; overflow-y: auto; padding: 14px 14px; display: flex; flex-direction: column; gap: 4px;
     .shell--collapsed & { padding: $space-3 $space-2; } }
-  &__footer { padding: $space-3; border-top: 1px solid rgba(255, 255, 255, 0.06); @include below($bp-md) { display: none; } }
+  &__footer { padding: $space-3; border-top: 1px solid #e2e8f0; @include below($bp-md) { display: none; } }
 }
 
 .nav-link {
-  position: relative; display: flex; align-items: center; gap: $space-3; width: 100%; min-height: 40px; padding: $space-2 $space-3;
-  border-radius: $radius-md; color: $slate-300; font-size: $fs-base; font-weight: 500; text-align: left; transition: background $t-fast, color $t-fast;
-  &:hover { background: rgba(255, 255, 255, 0.06); color: $white; }
-  &.is-active { background: rgba(1, 112, 185, 0.22); color: $white; font-weight: 600;
-    &::before { content: ''; position: absolute; left: -12px; top: 8px; bottom: 8px; width: 3px; border-radius: 0 3px 3px 0; background: $brand-300; } }
-  &__icon { flex-shrink: 0; color: $slate-400; .is-active > &, &:hover { color: $brand-300; } }
-  &.is-active &__icon { color: $brand-300; }
+  position: relative; display: flex; align-items: center; gap: 14px; width: 100%; min-height: 48px; padding: 0 16px;
+  border-radius: 9px; color: #475569; font-size: 15px; font-weight: 700; text-align: left; transition: background $t-fast, color $t-fast;
+  &:hover { background: #f1f6ff; color: #1683f5; .nav-link__icon { color: #1683f5; } }
+  &.is-active { background: #edf5ff; color: #1683f5; font-weight: 800;
+    .nav-link__icon { color: #1683f5; }
+  }
+  &__icon { flex-shrink: 0; color: #64748b; transition: color $t-fast; }
   &__label { flex: 1; @include truncate; }
-  &__chevron { color: $slate-500; transition: transform $t-fast; }
-  &--child { min-height: 34px; padding-left: 42px; font-size: $fs-sm; color: $slate-400;
-    &.is-active::before { left: 22px; top: 9px; bottom: 9px; width: 2px; } }
+  &__chevron { color: $slate-400; transition: transform $t-fast; }
+  &--child { min-height: 38px; padding-left: 44px; font-size: 14px; color: #64748b;
+    &.is-active { background: #edf5ff; color: #1683f5; font-weight: 700; }
+  }
   .shell--collapsed & { justify-content: center; padding: $space-2; }
   @include focus-visible;
 }
 .nav-group {
   &.is-open > .nav-link .nav-link__chevron { transform: rotate(180deg); }
-  &.has-active > .nav-link { color: $white; .nav-link__icon { color: $brand-300; } }
-  &__children { display: flex; flex-direction: column; gap: 1px; margin: 2px 0 6px; }
+  &.has-active > .nav-link { color: #1683f5; .nav-link__icon { color: #1683f5; } }
+  &__children { display: flex; flex-direction: column; gap: 2px; margin: 4px 0 6px; }
 }
 
 // Topbar ----------------------------------------------------------------------------------

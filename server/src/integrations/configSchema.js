@@ -4,7 +4,7 @@ import { DATE_FORMATS } from './transforms.js';
 import { FIELD_GROUPS, REPORT_TYPES, REQUEST_PARAMS } from './canonicalFields.js';
 import { ADAPTERS } from './adapters/index.js';
 
-export const AUTH_TYPES = ['none', 'bearer', 'api_key', 'login_token'];
+export const AUTH_TYPES = ['none', 'bearer', 'api_key', 'login_token', 'hmac_sha256', 'basic'];
 export const PAGINATION_STRATEGIES = ['none', 'page', 'offset', 'cursor'];
 export const HTTP_METHODS = ['GET', 'POST'];
 export const DATE_PARAM_FORMATS = ['YYYY-MM-DD', 'DD/MM/YYYY', 'MM/DD/YYYY', 'YYYYMMDD', 'iso_datetime', 'epoch_ms', 'epoch_s'];
@@ -26,10 +26,11 @@ export function isForbiddenHeader(name) {
 
 export function validateEndpointPath(path) {
   if (typeof path !== 'string' || !path.startsWith('/')) return 'Path must start with "/".';
-  if (path.length > 300) return 'Path is too long.';
-  if (!/^\/[A-Za-z0-9/_\-.~%]*$/.test(path)) return 'Path may only contain letters, digits and / _ - . ~ % (no query string or fragment).';
+  if (path.length > 500) return 'Path is too long.';
+  if (path.includes('#')) return 'Path may not contain a hash/fragment.';
+  if (!/^\/[A-Za-z0-9/_\-.~%?&=:]*$/.test(path)) return 'Path may only contain valid URL path and query characters.';
   if (path.includes('//')) return 'Path may not contain "//".';
-  if (path.split('/').some(seg => seg === '..' || seg === '.')) return 'Path may not contain "." or ".." segments.';
+  if (path.split('?')[0].split('/').some(seg => seg === '..' || seg === '.')) return 'Path may not contain "." or ".." segments.';
   if (/%2e|%2f|%5c/i.test(path)) return 'Path may not contain encoded dots or slashes.';
   return null;
 }
@@ -81,8 +82,8 @@ export function validateIntegrationConfig(input = {}) {
 
   cfg.timeout_ms = intIn(input.timeout_ms, 1000, 30000, 15000);
   if (Number.isNaN(cfg.timeout_ms)) err('timeout_ms', 'Timeout must be between 1000 and 30000 ms.');
-  cfg.max_response_bytes = intIn(input.max_response_bytes, 10 * 1024, 20 * 1024 * 1024, 5 * 1024 * 1024);
-  if (Number.isNaN(cfg.max_response_bytes)) err('max_response_bytes', 'Response size limit must be between 10 KB and 20 MB.');
+  cfg.max_response_bytes = intIn(input.max_response_bytes, 10 * 1024, 100 * 1024 * 1024, 25 * 1024 * 1024);
+  if (Number.isNaN(cfg.max_response_bytes)) err('max_response_bytes', 'Response size limit must be between 10 KB and 100 MB.');
   cfg.rate_limit_per_minute = intIn(input.rate_limit_per_minute, 1, 600, 60);
   if (Number.isNaN(cfg.rate_limit_per_minute)) err('rate_limit_per_minute', 'Rate limit must be between 1 and 600 requests per minute.');
   cfg.default_range_days = intIn(input.default_range_days, 1, 366, 30);
@@ -136,15 +137,25 @@ export function validateIntegrationConfig(input = {}) {
 
   // Optional metric endpoint overrides
   const optionalEndpoints = [
-    'total_subscribers', 'daily_subscribers', 'duration_subscribers',
-    'churn_subscribers', 'renewals', 'monthly_income'
+    { key: 'total_subscribers', alt: 'totalSubscribers' },
+    { key: 'daily_subscribers', alt: 'dailySubscribers' },
+    { key: 'duration_subscribers', alt: 'durationSubscribers' },
+    { key: 'churn_subscribers', alt: 'churnSubscribers' },
+    { key: 'renewals', alt: 'renewals' },
+    { key: 'monthly_income', alt: 'monthlyIncome' }
   ];
-  for (const opt of optionalEndpoints) {
-    if (e[opt]?.path) {
-      const p = str(e[opt].path, 300);
+  for (const { key, alt } of optionalEndpoints) {
+    const rawVal = e[key] || e[alt];
+    const pathStr = typeof rawVal === 'string' ? rawVal : rawVal?.path;
+    if (pathStr) {
+      const p = str(pathStr, 500);
       const valErr = validateEndpointPath(p);
-      if (valErr) err(`endpoints.${opt}.path`, valErr);
-      else cfg.endpoints[opt] = { path: p, method: (e[opt]?.method || 'GET').toUpperCase() };
+      if (valErr) err(`endpoints.${key}.path`, valErr);
+      else {
+        const method = ((typeof rawVal === 'object' && rawVal?.method) || 'GET').toUpperCase();
+        cfg.endpoints[key] = { path: p, method };
+        cfg.endpoints[alt] = { path: p, method };
+      }
     }
   }
 
@@ -179,10 +190,17 @@ export function validateIntegrationConfig(input = {}) {
   cfg.report_types = {};
   for (const rt of REPORT_TYPES) {
     const v = str(input.report_types?.[rt], 64);
-    cfg.report_types[rt] = v;
-    if (v && !VALUE_TOKEN_RE.test(v)) err(`report_types.${rt}`, 'Report type values may only contain letters, digits and _ . - :');
+    if (v) {
+      cfg.report_types[rt] = v;
+      if (!VALUE_TOKEN_RE.test(v)) err(`report_types.${rt}`, 'Report type values may only contain letters, digits and _ . - :');
+    }
   }
-  if (cfg.params.report_type && !cfg.report_types.overview) err('report_types.overview', 'Set the report value used for the overview/settlement request.');
+  if (cfg.params.report_type) {
+    if (!cfg.report_types.overview) cfg.report_types.overview = 'all';
+    if (!cfg.report_types.subscribers) cfg.report_types.subscribers = 'success';
+    if (!cfg.report_types.renewals) cfg.report_types.renewals = 'renewal';
+    if (!cfg.report_types.churn) cfg.report_types.churn = 'churn';
+  }
 
   cfg.static_params = [];
   for (const [i, sp] of (Array.isArray(input.static_params) ? input.static_params : []).slice(0, 10).entries()) {
@@ -250,7 +268,8 @@ export function validateIntegrationConfig(input = {}) {
   const fm = input.field_mappings || {};
   cfg.field_mappings = {};
   for (const [key, pathVal] of Object.entries(fm)) {
-    const path = str(pathVal, 200);
+    const rawPath = typeof pathVal === 'string' ? pathVal : pathVal?.path;
+    const path = str(rawPath, 200);
     if (!path) continue;
     if (!isValidPath(path)) {
       err(`field_mappings.${key}`, `Invalid path '${path}'.`);
@@ -290,7 +309,8 @@ export function validateIntegrationConfig(input = {}) {
         err(`mappings.${group}.${key}`, `Unknown canonical field '${key}'.`);
         continue;
       }
-      const path = str(m?.path, 200);
+      const rawPath = typeof m === 'string' ? m : m?.path;
+      const path = str(rawPath, 200);
       if (!path) continue;
       if (!isValidPath(path)) {
         err(`mappings.${group}.${key}`, `Invalid path '${path}'.`);
@@ -298,12 +318,12 @@ export function validateIntegrationConfig(input = {}) {
       }
       const entry = { path, type: defs[key].type };
       if (defs[key].type === 'date' || defs[key].type === 'datetime') {
-        entry.format = m.format && DATE_FORMATS.includes(m.format) ? m.format : 'auto';
+        entry.format = m && typeof m === 'object' && m.format && DATE_FORMATS.includes(m.format) ? m.format : 'auto';
       }
       if (defs[key].type === 'decimal' || defs[key].type === 'integer') {
-        entry.decimal_separator = m.decimal_separator === ',' ? ',' : '.';
+        entry.decimal_separator = m && typeof m === 'object' && m.decimal_separator === ',' ? ',' : '.';
       }
-      if (m.label) entry.label = str(m.label, 60);
+      if (m && typeof m === 'object' && m.label) entry.label = str(m.label, 60);
       cfg.mappings[group][key] = entry;
     }
   }
