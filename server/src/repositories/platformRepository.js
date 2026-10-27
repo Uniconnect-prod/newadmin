@@ -1,6 +1,12 @@
 import { col, COLLECTIONS, isPostgres, query, nextSequence } from '../store/index.js';
 import { exactCaseInsensitive } from '../utils/errors.js';
 import { credentialRepository } from './credentialRepository.js';
+import { TtlCache } from '../utils/ttlCache.js';
+
+// Cache for stable, frequently-read platform data (invalidated on every write).
+// 30 s is long enough to absorb repeated dashboard requests; short enough that
+// admin changes (status, config) propagate quickly.
+const platformCache = new TtlCache({ ttlMs: 30_000, maxSize: 200 });
 
 export const REPORTING_MODULES = ['overview', 'settlement', 'revenue', 'subscribers', 'renewals', 'churn', 'subscriber_records'];
 
@@ -109,37 +115,52 @@ export function toAdminView(p) {
   };
 }
 
+/** Invalidate all platform cache entries (call after any write). */
+export function invalidatePlatformCache(idOrCode) {
+  if (idOrCode !== undefined) {
+    platformCache.delete(`byCode:${String(idOrCode).trim().toUpperCase()}`);
+    platformCache.delete(`byId:${idOrCode}`);
+  }
+  // Always bust the list cache so listAll/listActive reflect the change.
+  platformCache.delete('listAll');
+}
+
 export const platformRepository = {
   async findByIdOrCode(idOrCode, { raw = true } = {}) {
     if (idOrCode === undefined || idOrCode === null || idOrCode === '') return null;
     const str = String(idOrCode).trim();
 
     if (isPostgres()) {
-      const isNum = /^\d+$/.test(str);
-      const sql = `
-        SELECT p.id, p.platform_name, p.platform_code, p.country_id,
-               c.country_name, c.country_code,
-               p.status, p.description, p.logo_url, p.accent_color, p.business_timezone,
-               COALESCE(p.currency, c.currency_code) as currency,
-               p.enabled_modules, p.config_version, p.integration, p.published_integration,
-               p.published_config_hash, p.published_at, p.published_by, p.validation,
-               p.integration_health, p.created_by, p.created_at, p.updated_at,
-               COALESCE(
-                 (
-                   SELECT jsonb_object_agg(pac.credential_name, pac.encrypted_value)
-                   FROM platform_api_credentials pac
-                   WHERE pac.platform_id = p.id
-                 ),
-                 '{}'::jsonb
-               ) as integration_secrets
-        FROM admin_platforms p
-        LEFT JOIN admin_countries c ON p.country_id = c.id
-        WHERE UPPER(p.platform_code) = UPPER($1) ${isNum ? 'OR p.id = $2' : ''}
-        LIMIT 1;
-      `;
-      const params = isNum ? [str, Number(str)] : [str];
-      const res = await query(sql, params);
-      const doc = shapePlatform(res.rows[0]);
+      const cacheKey = `byCode:${str.toUpperCase()}`;
+      const fetcher = async () => {
+        const isNum = /^\d+$/.test(str);
+        const sql = `
+          SELECT p.id, p.platform_name, p.platform_code, p.country_id,
+                 c.country_name, c.country_code,
+                 p.status, p.description, p.logo_url, p.accent_color, p.business_timezone,
+                 COALESCE(p.currency, c.currency_code) as currency,
+                 p.enabled_modules, p.config_version, p.integration, p.published_integration,
+                 p.published_config_hash, p.published_at, p.published_by, p.validation,
+                 p.integration_health, p.created_by, p.created_at, p.updated_at,
+                 COALESCE(
+                   (
+                     SELECT jsonb_object_agg(pac.credential_name, pac.encrypted_value)
+                     FROM platform_api_credentials pac
+                     WHERE pac.platform_id = p.id
+                   ),
+                   '{}'::jsonb
+                 ) as integration_secrets
+          FROM admin_platforms p
+          LEFT JOIN admin_countries c ON p.country_id = c.id
+          WHERE UPPER(p.platform_code) = UPPER($1) ${/^\d+$/.test(str) ? 'OR p.id = $2' : ''}
+          LIMIT 1;
+        `;
+        const params = /^\d+$/.test(str) ? [str, Number(str)] : [str];
+        const res = await query(sql, params);
+        return shapePlatform(res.rows[0]);
+      };
+      // raw=false (admin views) bypass the cache since they may be stale after wizard edits.
+      const doc = raw ? await platformCache.getOrSet(cacheKey, fetcher) : await fetcher();
       return raw ? doc : toAdminView(doc);
     }
 
@@ -154,28 +175,30 @@ export const platformRepository = {
     if (!Number.isFinite(idNum)) return null;
 
     if (isPostgres()) {
-      const sql = `
-        SELECT p.id, p.platform_name, p.platform_code, p.country_id,
-               c.country_name, c.country_code,
-               p.status, p.description, p.logo_url, p.accent_color, p.business_timezone,
-               COALESCE(p.currency, c.currency_code) as currency,
-               p.enabled_modules, p.config_version, p.integration, p.published_integration,
-               p.published_config_hash, p.published_at, p.published_by, p.validation,
-               p.integration_health, p.created_by, p.created_at, p.updated_at,
-               COALESCE(
-                 (
-                   SELECT jsonb_object_agg(pac.credential_name, pac.encrypted_value)
-                   FROM platform_api_credentials pac
-                   WHERE pac.platform_id = p.id
-                 ),
-                 '{}'::jsonb
-               ) as integration_secrets
-        FROM admin_platforms p
-        LEFT JOIN admin_countries c ON p.country_id = c.id
-        WHERE p.id = $1;
-      `;
-      const res = await query(sql, [idNum]);
-      return shapePlatform(res.rows[0]);
+      return platformCache.getOrSet(`byId:${idNum}`, async () => {
+        const sql = `
+          SELECT p.id, p.platform_name, p.platform_code, p.country_id,
+                 c.country_name, c.country_code,
+                 p.status, p.description, p.logo_url, p.accent_color, p.business_timezone,
+                 COALESCE(p.currency, c.currency_code) as currency,
+                 p.enabled_modules, p.config_version, p.integration, p.published_integration,
+                 p.published_config_hash, p.published_at, p.published_by, p.validation,
+                 p.integration_health, p.created_by, p.created_at, p.updated_at,
+                 COALESCE(
+                   (
+                     SELECT jsonb_object_agg(pac.credential_name, pac.encrypted_value)
+                     FROM platform_api_credentials pac
+                     WHERE pac.platform_id = p.id
+                   ),
+                   '{}'::jsonb
+                 ) as integration_secrets
+          FROM admin_platforms p
+          LEFT JOIN admin_countries c ON p.country_id = c.id
+          WHERE p.id = $1;
+        `;
+        const res = await query(sql, [idNum]);
+        return shapePlatform(res.rows[0]);
+      });
     }
 
     return platforms().findOne({ id: idNum });
@@ -183,28 +206,30 @@ export const platformRepository = {
 
   async listAll() {
     if (isPostgres()) {
-      const sql = `
-        SELECT p.id, p.platform_name, p.platform_code, p.country_id,
-               c.country_name, c.country_code,
-               p.status, p.description, p.logo_url, p.accent_color, p.business_timezone,
-               COALESCE(p.currency, c.currency_code) as currency,
-               p.enabled_modules, p.config_version, p.integration, p.published_integration,
-               p.published_config_hash, p.published_at, p.published_by, p.validation,
-               p.integration_health, p.created_by, p.created_at, p.updated_at,
-               COALESCE(
-                 (
-                   SELECT jsonb_object_agg(pac.credential_name, pac.encrypted_value)
-                   FROM platform_api_credentials pac
-                   WHERE pac.platform_id = p.id
-                 ),
-                 '{}'::jsonb
-               ) as integration_secrets
-        FROM admin_platforms p
-        LEFT JOIN admin_countries c ON p.country_id = c.id
-        ORDER BY p.id ASC;
-      `;
-      const res = await query(sql);
-      return res.rows.map(shapePlatform);
+      return platformCache.getOrSet('listAll', async () => {
+        const sql = `
+          SELECT p.id, p.platform_name, p.platform_code, p.country_id,
+                 c.country_name, c.country_code,
+                 p.status, p.description, p.logo_url, p.accent_color, p.business_timezone,
+                 COALESCE(p.currency, c.currency_code) as currency,
+                 p.enabled_modules, p.config_version, p.integration, p.published_integration,
+                 p.published_config_hash, p.published_at, p.published_by, p.validation,
+                 p.integration_health, p.created_by, p.created_at, p.updated_at,
+                 COALESCE(
+                   (
+                     SELECT jsonb_object_agg(pac.credential_name, pac.encrypted_value)
+                     FROM platform_api_credentials pac
+                     WHERE pac.platform_id = p.id
+                   ),
+                   '{}'::jsonb
+                 ) as integration_secrets
+          FROM admin_platforms p
+          LEFT JOIN admin_countries c ON p.country_id = c.id
+          ORDER BY p.id ASC;
+        `;
+        const res = await query(sql);
+        return res.rows.map(shapePlatform);
+      });
     }
 
     return platforms().find({}).sort({ id: 1 }).toArray();
@@ -216,6 +241,7 @@ export const platformRepository = {
   },
 
   async create(data, createdBy) {
+    invalidatePlatformCache();
     const code = String(data.code).trim().toUpperCase();
 
     if (isPostgres()) {
@@ -324,6 +350,7 @@ export const platformRepository = {
   async updateDetails(id, fields) {
     const idNum = parseInt(id, 10);
     if (!Number.isFinite(idNum)) return null;
+    invalidatePlatformCache(id);
 
     if (isPostgres()) {
       const setClauses = ['updated_at = NOW()'];
@@ -388,6 +415,7 @@ export const platformRepository = {
   async saveIntegrationDraft(id, integration) {
     const idNum = parseInt(id, 10);
     if (!Number.isFinite(idNum)) return null;
+    invalidatePlatformCache(id);
 
     if (isPostgres()) {
       await query(
@@ -415,6 +443,7 @@ export const platformRepository = {
   async saveSecrets(id, secrets) {
     const idNum = parseInt(id, 10);
     if (!Number.isFinite(idNum)) return null;
+    invalidatePlatformCache(id);
 
     if (isPostgres()) {
       // Sync into relational platform_api_key_values
@@ -444,6 +473,7 @@ export const platformRepository = {
 
   async saveValidation(id, validation) {
     const idNum = parseInt(id, 10);
+    invalidatePlatformCache(id);
     if (isPostgres()) {
       await query(`UPDATE admin_platforms SET validation = $2, updated_at = NOW() WHERE id = $1;`, [idNum, JSON.stringify(validation)]);
       return;
@@ -453,6 +483,7 @@ export const platformRepository = {
 
   async publish(id, { integration, configHash, userId }) {
     const idNum = parseInt(id, 10);
+    invalidatePlatformCache(id);
     if (isPostgres()) {
       await query(
         `UPDATE admin_platforms
@@ -487,6 +518,7 @@ export const platformRepository = {
 
   async setStatus(id, status) {
     const idNum = parseInt(id, 10);
+    invalidatePlatformCache(id);
     if (isPostgres()) {
       await query(`UPDATE admin_platforms SET status = $2, updated_at = NOW() WHERE id = $1;`, [idNum, status]);
       return this.findById(idNum);
@@ -514,6 +546,7 @@ export const platformRepository = {
   async delete(id) {
     const idNum = parseInt(id, 10);
     if (!Number.isFinite(idNum)) return false;
+    invalidatePlatformCache(id);
 
     if (isPostgres()) {
       // Foreign keys with CASCADE will automatically remove platform_api_credentials,

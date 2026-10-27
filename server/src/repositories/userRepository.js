@@ -1,5 +1,14 @@
 import { col, COLLECTIONS, isPostgres, query, nextSequence } from '../store/index.js';
 import { exactCaseInsensitive } from '../utils/errors.js';
+import { TtlCache } from '../utils/ttlCache.js';
+
+// Short TTL: user data (status, access dates) is security-sensitive but a 10 s
+// window is acceptable because the JWT is already a ~1-hour credential.
+const userCache = new TtlCache({ ttlMs: 10_000, maxSize: 500 });
+
+function invalidateUser(id) {
+  userCache.delete(`byId:${id}`);
+}
 
 const PUBLIC_FIELDS = { password_hash: 0, backup_password_hash: 0 };
 
@@ -52,17 +61,30 @@ export const userRepository = {
     const idNum = parseInt(id, 10);
     if (!Number.isFinite(idNum)) return null;
 
+    // Bypass cache when password hash is needed (auth/login flows only).
     if (isPostgres()) {
-      const sql = `
-        SELECT id, username, email, status, is_super_admin, name, country,
-               access_start_date, access_end_date,
-               created_at, updated_at, last_login_at, deleted_at
-               ${includePassword ? ', password_hash, backup_password_hash' : ''}
-        FROM admin_users
-        WHERE id = $1 AND deleted_at IS NULL;
-      `;
-      const res = await query(sql, [idNum]);
-      return shapeUser(res.rows[0]);
+      if (includePassword) {
+        const sql = `
+          SELECT id, username, email, status, is_super_admin, name, country,
+                 access_start_date, access_end_date,
+                 created_at, updated_at, last_login_at, deleted_at, password_hash, backup_password_hash
+          FROM admin_users
+          WHERE id = $1 AND deleted_at IS NULL;
+        `;
+        const res = await query(sql, [idNum]);
+        return shapeUser(res.rows[0]);
+      }
+      return userCache.getOrSet(`byId:${idNum}`, async () => {
+        const sql = `
+          SELECT id, username, email, status, is_super_admin, name, country,
+                 access_start_date, access_end_date,
+                 created_at, updated_at, last_login_at, deleted_at
+          FROM admin_users
+          WHERE id = $1 AND deleted_at IS NULL;
+        `;
+        const res = await query(sql, [idNum]);
+        return shapeUser(res.rows[0]);
+      });
     }
 
     return users().findOne({ id: idNum, deleted_at: null }, includePassword ? {} : { projection: PUBLIC_FIELDS });
@@ -151,6 +173,7 @@ export const userRepository = {
   async update(id, fields) {
     const idNum = parseInt(id, 10);
     if (!Number.isFinite(idNum)) return null;
+    invalidateUser(idNum);
 
     if (isPostgres()) {
       const allowed = ['name', 'email', 'username', 'status', 'country', 'is_super_admin', 'access_start_date', 'access_end_date'];
@@ -192,6 +215,7 @@ export const userRepository = {
 
   async setPasswordHash(id, passwordHash) {
     const idNum = parseInt(id, 10);
+    invalidateUser(idNum);
     if (isPostgres()) {
       await query(`UPDATE admin_users SET password_hash = $2, updated_at = NOW() WHERE id = $1;`, [idNum, passwordHash]);
       return;
@@ -210,6 +234,7 @@ export const userRepository = {
 
   async softDelete(id) {
     const idNum = parseInt(id, 10);
+    invalidateUser(idNum);
     if (isPostgres()) {
       await query(`UPDATE admin_users SET deleted_at = NOW(), status = 'INACTIVE', updated_at = NOW() WHERE id = $1;`, [idNum]);
       return;
@@ -221,6 +246,7 @@ export const userRepository = {
   async deletePermanently(id) {
     const idNum = parseInt(id, 10);
     if (!Number.isFinite(idNum)) return;
+    invalidateUser(idNum);
     if (isPostgres()) {
       await query(`DELETE FROM admin_users WHERE id = $1;`, [idNum]);
       return;

@@ -1,5 +1,8 @@
 import React from 'react';
-import OverviewPage from '../overview/OverviewPage';
+import SubscribersRecordsPage from './SubscribersRecordsPage';
 
-const SubscribersPage = () => <OverviewPage />;
+export const SubscribersPage = () => (
+  <SubscribersRecordsPage reportType="subscribers" title="Subscribers" />
+);
+
 export default SubscribersPage;

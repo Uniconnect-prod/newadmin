@@ -11,6 +11,7 @@ import { DataSourceBar, DateRangeFilter } from '../../components/ui/data';
 import { ErrorPanel, KpiSkeletonGrid, ChartSkeleton, StateView } from '../../components/ui/feedback';
 import { TrendChart, BreakdownDonut } from '../../components/charts/Charts';
 import { KpiSection } from '../../components/reports/KpiSection';
+import SubscribersRecordsPage from '../subscribers/SubscribersRecordsPage';
 
 const SECTIONS = {
   revenue: {
@@ -91,10 +92,22 @@ const SectionContent = ({ section }) => {
   );
 };
 
-const AnalyticsPage = ({ section }) => (
-  <ReportScaffold module={SECTIONS[section].module}>
-    <SectionContent key={section} section={section} />
-  </ReportScaffold>
-);
+const AnalyticsPage = ({ section }) => {
+  if (section === 'subscribers') {
+    return <SubscribersRecordsPage reportType="subscribers" title="Subscribers" />;
+  }
+  if (section === 'renewals') {
+    return <SubscribersRecordsPage reportType="renewals" title="Renewal Subscribers" />;
+  }
+  if (section === 'churn') {
+    return <SubscribersRecordsPage reportType="churn" title="Churn Subscribers" />;
+  }
+
+  return (
+    <ReportScaffold module={SECTIONS[section]?.module || section}>
+      <SectionContent key={section} section={section} />
+    </ReportScaffold>
+  );
+};
 
 export default AnalyticsPage;

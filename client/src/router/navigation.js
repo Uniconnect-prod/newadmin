@@ -50,6 +50,10 @@ export function visibleNav(ctx) {
 }
 
 const EXTRA_CRUMBS = [
+  { match: /^\/reports\/settlement/, crumbs: ['Daily Subscriptions'] },
+  { match: /^\/reports\/subscribers/, crumbs: ['Subscribers'] },
+  { match: /^\/reports\/renewals/, crumbs: ['Renewal Subscribers'] },
+  { match: /^\/reports\/churn/, crumbs: ['Churn Subscribers'] },
   { match: /^\/platforms\/\d+/, crumbs: ['Platforms', 'Platform configuration'] },
   { match: /^\/platforms\/countries/, crumbs: ['Platforms', 'Countries'] },
   { match: /^\/settings\/countries/, crumbs: ['Settings', 'Countries'] },

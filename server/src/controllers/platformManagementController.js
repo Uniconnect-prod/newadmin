@@ -15,7 +15,7 @@ import { listAdapters } from '../integrations/adapters/index.js';
 import { listPresets } from '../integrations/presets.js';
 import { normalizeAllowlistEntry, isBlockedHostname, isPrivateAddress } from '../integrations/ssrfGuard.js';
 import { IntegrationError } from '../integrations/errors.js';
-import { clearResponseCache } from '../integrations/connector.js';
+import { clearResponseCache, invalidateOutboundPolicyCache } from '../integrations/connector.js';
 import { clearTokenCache } from '../integrations/authStrategies.js';
 import { createPlatformClient, draftHash } from '../services/integrationService.js';
 import { resolveRange } from '../reporting/dateRange.js';
@@ -37,6 +37,7 @@ async function autoApproveHost(rawUrl, userId) {
       const existing = await settingsRepository.getOutboundAllowlist().catch(() => []);
       if (!existing.includes(host)) {
         await settingsRepository.setOutboundAllowlist([...existing, host], userId).catch(() => {});
+        invalidateOutboundPolicyCache();
       }
     }
   } catch {}

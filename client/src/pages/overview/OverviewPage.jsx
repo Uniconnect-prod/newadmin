@@ -14,6 +14,7 @@ import {
 import { useAuth } from '../../context/AuthContext';
 import { useToast } from '../../context/ToastContext';
 import api, { downloadCsv, describeBlobError, describeError } from '../../services/api';
+import ExportCsvModal from '../../components/reports/ExportCsvModal';
 import './OverviewPage.scss';
 
 function getMonthStart() {
@@ -92,6 +93,7 @@ export const OverviewPage = () => {
   const [loadingRecords, setLoadingRecords] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [exporting, setExporting] = useState(false);
+  const [showExportModal, setShowExportModal] = useState(false);
 
   const displayCurrency = kpiData.currency || currentCurrency;
 
@@ -348,10 +350,10 @@ export const OverviewPage = () => {
             <button
               type="button"
               className="gh-btn-export"
-              onClick={handleExport}
-              disabled={exporting || totalRecords === 0}
+              onClick={() => setShowExportModal(true)}
+              disabled={totalRecords === 0}
             >
-              {exporting ? <Loader2 size={15} className="spin" /> : <Download size={15} />}
+              <Download size={15} />
               Export CSV
             </button>
 
@@ -518,6 +520,21 @@ export const OverviewPage = () => {
           </div>
         )}
       </div>
+      <ExportCsvModal
+        open={showExportModal}
+        onClose={() => setShowExportModal(false)}
+        initialFrom={appliedFilters.from}
+        initialTo={appliedFilters.to}
+        initialStatus={appliedFilters.status}
+        reportType={
+          appliedFilters.status === 'all' ? 'all'
+            : appliedFilters.status === 'success' ? 'subscribers'
+              : appliedFilters.status === 'renewal' ? 'renewals'
+                : 'churn'
+        }
+        title="All Subscribers"
+        minDate={minDate}
+      />
     </div>
   );
 };

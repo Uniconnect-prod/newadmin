@@ -46,9 +46,10 @@ export const exportController = {
     if (!normalizeModules(req.activePlatform.enabled_modules).includes(module)) {
       throw new AppError(404, 'MODULE_DISABLED', 'This export is not enabled for this platform.');
     }
-    const search = typeof req.query.search === 'string' && /^[0-9+\s-]{3,40}$/.test(req.query.search.trim()) ? req.query.search.trim().replace(/[\s+-]/g, '') : undefined;
+    const status = typeof req.query.status === 'string' && /^[A-Za-z_-]{1,30}$/.test(req.query.status) ? req.query.status : undefined;
+    const fields = typeof req.query.fields === 'string' ? req.query.fields : undefined;
     const minStartDate = userMinStartDate(req);
-    const result = await exportRecordsCsv(req.activePlatform, { reportType, ...rangeQuery(req.query, req), search, minStartDate }, { userId: req.user.id, signal: requestSignal(req, res), minStartDate });
+    const result = await exportRecordsCsv(req.activePlatform, { reportType, ...rangeQuery(req.query, req), search, status, fields, minStartDate }, { userId: req.user.id, signal: requestSignal(req, res), minStartDate });
     await logAudit(req, 'EXPORT_RECORDS_CSV', 'Report', null, { reportType, rows: result.meta.rows, complete: result.meta.complete, file: result.filename });
     send(res, result);
   }

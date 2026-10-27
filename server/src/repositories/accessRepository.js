@@ -1,4 +1,8 @@
 import { col, COLLECTIONS, isPostgres, query, transaction, nextSequence } from '../store/index.js';
+import { TtlCache } from '../utils/ttlCache.js';
+
+// Roles are seeded at startup and almost never change in production.
+const rolesCache = new TtlCache({ ttlMs: 60_000, maxSize: 10 });
 
 function access() {
   return col(COLLECTIONS.access);
@@ -35,9 +39,11 @@ function shapeAccess(row) {
 export const roleRepository = {
   async list() {
     if (isPostgres()) {
-      const sql = `SELECT id, role_name, description, permissions, created_at, updated_at FROM admin_roles ORDER BY id ASC;`;
-      const res = await query(sql);
-      return res.rows.map(shapeRole);
+      return rolesCache.getOrSet('roles', async () => {
+        const sql = `SELECT id, role_name, description, permissions, created_at, updated_at FROM admin_roles ORDER BY id ASC;`;
+        const res = await query(sql);
+        return res.rows.map(shapeRole);
+      });
     }
     return col(COLLECTIONS.roles).find({}, { projection: { _id: 0 } }).sort({ id: 1 }).toArray();
   },

@@ -91,10 +91,17 @@ export async function exportRecordsCsv(platform, { reportType, search, status, m
   if (minDate && collected.rows?.length) {
     collected.rows = collected.rows.filter(r => !r.date || r.date >= minDate);
   }
-  const keys = Object.keys(client.config.mappings.records || {});
+  let keys = Object.keys(client.config.mappings.records || {});
+  if (query.fields) {
+    const selected = String(query.fields).split(',').map(s => s.trim().toLowerCase()).filter(Boolean);
+    if (selected.length > 0) {
+      const filtered = keys.filter(k => selected.includes(k.toLowerCase()));
+      if (filtered.length > 0) keys = filtered;
+    }
+  }
   const decimals = client.config.currency_decimals ?? 2;
-  const header = keys.map(k => (k === 'amount' && platform.currency ? `${RECORD_FIELDS[k].label} (${platform.currency})` : RECORD_FIELDS[k].label));
-  const rows = collected.rows.map(r => keys.map(k => csvCell(r[k], { decimals: RECORD_FIELDS[k].type === 'decimal' ? decimals : null })));
+  const header = keys.map(k => (k === 'amount' && platform.currency ? `${RECORD_FIELDS[k]?.label || k} (${platform.currency})` : (RECORD_FIELDS[k]?.label || k)));
+  const rows = collected.rows.map(r => keys.map(k => csvCell(r[k], { decimals: RECORD_FIELDS[k]?.type === 'decimal' ? decimals : null })));
   return {
     csv: toCsv(header, rows),
     filename: `${safeFilenamePart(platform.code)}_${reportType}_${range.from}_${range.to}.csv`,

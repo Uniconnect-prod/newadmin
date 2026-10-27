@@ -6,6 +6,7 @@ import { tokenRepository } from '../repositories/tokenRepository.js';
 import { formatAccessRecord } from '../utils/platformAccessHelper.js';
 import { logAudit } from '../middleware/auditLogger.js';
 import { badRequest, notFound, conflict } from '../utils/errors.js';
+import { invalidateUserAccessCache } from '../middleware/auth.js';
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const USERNAME_RE = /^[A-Za-z0-9_.@-]{3,50}$/;
@@ -150,6 +151,7 @@ export const userController = {
       access_end_date: finalEndDate
     });
     await accessRepository.replaceForUser(created.id, assignments, req.user.id);
+    invalidateUserAccessCache(created.id);
     await logAudit(req, 'CREATE_USER', 'User', created.id, { username: created.username, assignments: assignments.length }, { platformId: null });
     const [out] = await withAccess([created]);
     res.status(201).json({ success: true, message: 'User created.', data: out });
@@ -207,6 +209,7 @@ export const userController = {
     });
     if (assignments) await accessRepository.replaceForUser(id, assignments, req.user.id);
     if (status === 'INACTIVE') await tokenRepository.revokeAllForUser(id);
+    invalidateUserAccessCache(id);
     await logAudit(req, 'UPDATE_USER', 'User', id, { fields: Object.keys(req.body || {}).filter(k => k !== 'platform_assignments'), assignments: assignments?.length }, { platformId: null });
     const [out] = await withAccess([await userRepository.findById(id)]);
     res.json({ success: true, message: 'User updated.', data: out });
@@ -229,6 +232,7 @@ export const userController = {
     const existing = await userRepository.findById(id);
     if (!existing) throw notFound('User not found.');
     await userRepository.deletePermanently(id);
+    invalidateUserAccessCache(id);
     await logAudit(req, 'DELETE_USER', 'User', id, { username: existing.username }, { platformId: null });
     res.json({ success: true, message: 'User permanently removed from the database.' });
   }

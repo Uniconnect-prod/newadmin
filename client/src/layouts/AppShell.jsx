@@ -122,11 +122,11 @@ export const AppShell = () => {
           <button type="button" className="btn btn--ghost btn--icon topbar__menu" onClick={() => setMobileOpen(true)} aria-label="Open navigation"><Menu size={20} /></button>
 
           <nav className="breadcrumbs" aria-label="Breadcrumb">
-            <span>Reporting</span>
-            {crumbs.map((c, i) => (
+            <span className={crumbs.filter(c => c !== 'Dashboard').length === 0 ? 'is-current' : ''}>Dashboard</span>
+            {crumbs.filter(c => c !== 'Dashboard').map((c, i, arr) => (
               <React.Fragment key={c}>
                 <ChevronRight size={13} />
-                <span className={i === crumbs.length - 1 ? 'is-current' : ''} aria-current={i === crumbs.length - 1 ? 'page' : undefined}>{c}</span>
+                <span className={i === arr.length - 1 ? 'is-current' : ''} aria-current={i === arr.length - 1 ? 'page' : undefined}>{c}</span>
               </React.Fragment>
             ))}
           </nav>

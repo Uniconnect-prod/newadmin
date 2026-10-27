@@ -1,6 +1,17 @@
 import { verifyAccessToken } from '../utils/token.js';
 import { userRepository } from '../repositories/userRepository.js';
 import { evaluateUserAccess } from '../services/accessService.js';
+import { TtlCache } from '../utils/ttlCache.js';
+
+// Cache the result of evaluateUserAccess (3 parallel DB queries) per user for 15 s.
+// Fine-grained access changes take effect within the TTL window, which is acceptable
+// since the JWT itself is already a ~1-hour credential.
+const accessCache = new TtlCache({ ttlMs: 15_000, maxSize: 500 });
+
+/** Call after any platform-access or user-status change to flush the affected user. */
+export function invalidateUserAccessCache(userId) {
+  accessCache.delete(`access:${userId}`);
+}
 
 export async function authenticate(req, res, next) {
   try {
@@ -35,7 +46,10 @@ export async function authenticate(req, res, next) {
       }
     }
 
-    const { evaluated, isSuperAdmin, available } = await evaluateUserAccess(user);
+    const { evaluated, isSuperAdmin, available } = await accessCache.getOrSet(
+      `access:${user.id}`,
+      () => evaluateUserAccess(user)
+    );
     if (!isSuperAdmin) {
       if (evaluated.length > 0 && evaluated.every(a => a.status === 'EXPIRED')) {
         await userRepository.deletePermanently(user.id);
