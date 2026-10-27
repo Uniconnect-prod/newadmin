@@ -95,12 +95,19 @@ export async function exportRecordsCsv(platform, { reportType, search, status, m
   if (query.fields) {
     const selected = String(query.fields).split(',').map(s => s.trim().toLowerCase()).filter(Boolean);
     if (selected.length > 0) {
-      const filtered = keys.filter(k => selected.includes(k.toLowerCase()));
+      const filtered = keys.filter(k => {
+        const lk = k.toLowerCase();
+        return selected.includes(lk) ||
+          (lk === 'charging_amount' && selected.includes('amount')) ||
+          (lk === 'amount' && selected.includes('charging_amount')) ||
+          (lk === 'event_time' && (selected.includes('created_at') || selected.includes('event_time'))) ||
+          (lk === 'created_at' && (selected.includes('event_time') || selected.includes('created_at')));
+      });
       if (filtered.length > 0) keys = filtered;
     }
   }
   const decimals = client.config.currency_decimals ?? 2;
-  const header = keys.map(k => (k === 'amount' && platform.currency ? `${RECORD_FIELDS[k]?.label || k} (${platform.currency})` : (RECORD_FIELDS[k]?.label || k)));
+  const header = keys.map(k => ((k === 'amount' || k === 'charging_amount') && platform.currency ? `${RECORD_FIELDS[k]?.label || k} (${platform.currency})` : (RECORD_FIELDS[k]?.label || k)));
   const rows = collected.rows.map(r => keys.map(k => csvCell(r[k], { decimals: RECORD_FIELDS[k]?.type === 'decimal' ? decimals : null })));
   return {
     csv: toCsv(header, rows),

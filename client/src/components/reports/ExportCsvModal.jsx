@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Download, X, Loader2, Zap, CheckSquare, Square } from 'lucide-react';
+import { Download, X, Loader2, CheckSquare, Square } from 'lucide-react';
 import { useToast } from '../../context/ToastContext';
 import { downloadCsv, describeBlobError } from '../../services/api';
 import './ExportCsvModal.scss';
@@ -134,8 +134,21 @@ export const ExportCsvModal = ({
         });
         toast.success(`Exported ${meta.rows?.toLocaleString() || 'all'} rows to ${meta.filename || 'daily_subscriptions.csv'}.`);
       } else {
+        let targetReportType = reportType || 'subscribers';
+        if (targetReportType === 'all' || targetReportType === 'overview') {
+          if (status === 'renewal') targetReportType = 'renewals';
+          else if (status === 'churn') targetReportType = 'churn';
+          else targetReportType = 'subscribers';
+        } else if (status === 'renewal') {
+          targetReportType = 'renewals';
+        } else if (status === 'churn') {
+          targetReportType = 'churn';
+        } else if (status === 'success') {
+          targetReportType = 'subscribers';
+        }
+
         const params = {
-          reportType: reportType || 'subscribers',
+          reportType: targetReportType,
           from,
           to,
           fields: selectedFields.join(',')
@@ -144,9 +157,7 @@ export const ExportCsvModal = ({
           params.status = status;
         }
 
-        const meta = await downloadCsv('/export/records', {
-          ...params
-        });
+        const meta = await downloadCsv('/export/records', params);
 
         toast.success(`Exported ${meta.rows?.toLocaleString() || 'all'} record(s) successfully.`);
       }
@@ -303,11 +314,6 @@ export const ExportCsvModal = ({
               </div>
             </div>
           )}
-
-          <div className="export-speed-note">
-            <Zap size={15} style={{ flexShrink: 0 }} />
-            <span>Parallel export accelerator enabled: selected data will download quickly.</span>
-          </div>
 
           {/* Footer */}
           <div className="export-modal-footer">

@@ -96,12 +96,12 @@ export const DailySubscriptionsPage = () => {
   const displayCurrency = currentCurrency === 'GHS' ? 'GHC' : currentCurrency;
   const kpiCurrency = kpiData.currency || displayCurrency;
 
-  const loadData = useCallback(async (filters) => {
+  const loadData = useCallback(async (filters, isFresh = false) => {
     setLoading(true);
     try {
-      const res = await api.get('/reports/overview', {
-        params: { from: filters.from, to: filters.to, fresh: 1 }
-      });
+      const params = { from: filters.from, to: filters.to };
+      if (isFresh) params.fresh = 1;
+      const res = await api.get('/reports/overview', { params });
       const data = res?.data?.data || {};
       const kpis = data.kpis || [];
       const resCurrency = data.currency;
@@ -210,7 +210,7 @@ export const DailySubscriptionsPage = () => {
   const handleRefresh = async () => {
     setRefreshing(true);
     try {
-      await loadData(appliedFilters);
+      await loadData(appliedFilters, true);
       toast.success('Daily subscriptions refreshed.');
     } finally {
       setRefreshing(false);

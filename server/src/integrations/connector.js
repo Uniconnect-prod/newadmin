@@ -144,7 +144,7 @@ export class PlatformApiClient {
       const res = await safeRequest(
         {
           ...spec,
-          timeoutMs: this.config.timeout_ms || appConfig.outbound.defaultTimeoutMs,
+          timeoutMs: Math.max(this.config.timeout_ms || 0, appConfig.outbound.defaultTimeoutMs || 60000, 60000),
           maxBytes: Math.min(this.config.max_response_bytes || appConfig.outbound.defaultMaxResponseBytes, appConfig.outbound.maxResponseBytesCeiling)
         },
         { policy: this.policy, transport: deps.transport, maxRedirects: appConfig.outbound.maxRedirects }
@@ -166,7 +166,9 @@ export class PlatformApiClient {
   async executeRaw(built, { kind = 'FETCH', signal } = {}) {
     // Destination policy first: never resolve or send credentials for an unapproved host.
     checkUrlPolicy(built.url, this.policy);
-    takeToken(`platform:${this.platform.id ?? this.platform.code}`, this.config.rate_limit_per_minute || 60);
+    if (kind !== 'EXPORT') {
+      takeToken(`platform:${this.platform.id ?? this.platform.code}`, this.config.rate_limit_per_minute || 60);
+    }
 
     const loginRequest = spec => this.rawRequest({ ...spec, signal }, 'LOGIN');
     const send = async (forceRefresh) => {

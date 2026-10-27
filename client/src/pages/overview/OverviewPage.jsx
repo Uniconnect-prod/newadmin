@@ -98,57 +98,37 @@ export const OverviewPage = () => {
   const displayCurrency = kpiData.currency || currentCurrency;
 
   // Fetch KPI Cards
-  const loadKpis = useCallback(async (filters) => {
+  const loadKpis = useCallback(async (filters, isFresh = false) => {
     try {
       const todayStr = getToday();
       const monthStartStr = getMonthStart();
       const isDefaultMonth = filters.from === monthStartStr && filters.to === todayStr;
 
-      // Always fetch current month and today's overview
-      const requests = [
-        api.get('/reports/overview', { params: { from: monthStartStr, to: todayStr, fresh: 1 } }),
-        api.get('/reports/overview', { params: { from: todayStr, to: todayStr, fresh: 1 } }).catch(() => null)
-      ];
+      const params = { from: filters.from, to: filters.to };
+      if (isFresh) params.fresh = 1;
 
-      // If user selected a custom date range different from default month, fetch that range too
-      if (!isDefaultMonth) {
-        requests.push(api.get('/reports/overview', { params: { from: filters.from, to: filters.to, fresh: 1 } }).catch(() => null));
-      }
+      const res = await api.get('/reports/overview', { params });
+      const data = res?.data?.data || {};
+      const kpis = data.kpis || [];
+      const series = data.trends?.series || [];
 
-      const [monthRes, todayRes, customRes] = await Promise.all(requests);
+      // Find today's row in trends series
+      const todayRow = series.find(s => s.date === todayStr || s.report_date === todayStr);
 
-      const mKpis = monthRes?.data?.data?.kpis || [];
-      const tKpis = todayRes?.data?.data?.kpis || [];
-      const fKpis = (!isDefaultMonth && customRes?.data?.data?.kpis) ? customRes.data.data.kpis : mKpis;
+      const subsVal = kpis.find(k => k.key === 'subscriber_count')?.value ?? kpis.find(k => k.key === 'new_subscribers')?.value ?? 0;
+      const todaySubs = todayRow?.new_subscribers ?? todayRow?.subscriber_count ?? 0;
+      const todayRen = todayRow?.renewal_count ?? 0;
+      const filteredRen = kpis.find(k => k.key === 'renewal_count')?.value ?? 0;
+      const displayRenewal = isDefaultMonth ? (todayRen || filteredRen) : filteredRen;
 
-      // 1. Monthly / Selected Subscriber
-      const defaultMonthSubs = mKpis.find(k => k.key === 'subscriber_count')?.value ?? mKpis.find(k => k.key === 'new_subscribers')?.value ?? 0;
-      const filteredSubs = fKpis.find(k => k.key === 'subscriber_count')?.value ?? fKpis.find(k => k.key === 'new_subscribers')?.value ?? defaultMonthSubs;
-
-      // 2. Today Subscriber
-      const todaySubs = tKpis.find(k => k.key === 'new_subscribers')?.value ?? tKpis.find(k => k.key === 'subscriber_count')?.value ?? 0;
-
-      // 3. Today Renewal vs Filtered Renewal
-      // Default: Aaj ka renewal (3,000 from todayRes, na ki pura month ka!)
-      // Jab date change karein: Selected date range ka renewal (from fKpis)
-      const todayRen = tKpis.find(k => k.key === 'renewal_count')?.value ?? 0;
-      const filteredRen = fKpis.find(k => k.key === 'renewal_count')?.value ?? 0;
-      const displayRenewal = isDefaultMonth ? todayRen : filteredRen;
-
-      // 4. Monthly GHCAmount
-      // Default: Current month ka total amount (from mKpis)
-      // Jab date change karein: Selected date range ka amount (from fKpis)
-      const defaultMonthAmount = mKpis.find(k => k.key === 'grand_total')?.value ?? 0;
-      const filteredAmount = fKpis.find(k => k.key === 'grand_total')?.value ?? defaultMonthAmount;
-      const displayAmountVal = isDefaultMonth ? defaultMonthAmount : filteredAmount;
-
-      const resCurrency = monthRes?.data?.data?.currency || 'GHC';
+      const grandTotalVal = kpis.find(k => k.key === 'grand_total')?.value ?? 0;
+      const resCurrency = data.currency || 'GHC';
 
       setKpiData({
-        monthlySubscriber: Number(filteredSubs !== null && filteredSubs !== undefined ? filteredSubs : 0),
+        monthlySubscriber: Number(subsVal !== null && subsVal !== undefined ? subsVal : 0),
         todaySubscriber: Number(todaySubs !== null && todaySubs !== undefined ? todaySubs : 0),
         todayRenewal: Number(displayRenewal !== null && displayRenewal !== undefined ? displayRenewal : 0),
-        monthlyAmount: Number(displayAmountVal !== null && displayAmountVal !== undefined ? displayAmountVal : 0)
+        monthlyAmount: Number(grandTotalVal !== null && grandTotalVal !== undefined ? grandTotalVal : 0)
           .toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
         currency: resCurrency,
         isCustom: !isDefaultMonth
@@ -163,7 +143,7 @@ export const OverviewPage = () => {
     setLoadingRecords(true);
     try {
       const reportType = filters.status === 'all'
-        ? 'all'
+        ? 'subscribers'
         : filters.status === 'success'
           ? 'subscribers'
           : filters.status === 'renewal'
@@ -215,7 +195,7 @@ export const OverviewPage = () => {
     setRefreshing(true);
     try {
       await Promise.all([
-        loadKpis(appliedFilters),
+        loadKpis(appliedFilters, true),
         loadRecords(appliedFilters, page, pageSize)
       ]);
       toast.success('Dashboard data refreshed.');

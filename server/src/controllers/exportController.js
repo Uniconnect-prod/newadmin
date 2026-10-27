@@ -40,15 +40,23 @@ export const exportController = {
   },
 
   async records(req, res) {
-    const reportType = String(req.query.reportType || 'subscribers');
+    let reportType = String(req.query.reportType || 'subscribers');
     if (!['all', 'overview', 'subscribers', 'renewals', 'churn'].includes(reportType)) throw new AppError(400, 'VALIDATION_ERROR', 'Unknown export type.');
     const module = (reportType === 'subscribers' || reportType === 'all' || reportType === 'overview') ? 'subscriber_records' : reportType;
     if (!normalizeModules(req.activePlatform.enabled_modules).includes(module)) {
       throw new AppError(404, 'MODULE_DISABLED', 'This export is not enabled for this platform.');
     }
+    const search = typeof req.query.search === 'string' ? req.query.search.trim().slice(0, 40) : undefined;
     const status = typeof req.query.status === 'string' && /^[A-Za-z_-]{1,30}$/.test(req.query.status) ? req.query.status : undefined;
     const fields = typeof req.query.fields === 'string' ? req.query.fields : undefined;
     const minStartDate = userMinStartDate(req);
+
+    if (reportType === 'all' || reportType === 'overview') {
+      if (status === 'renewal') reportType = 'renewals';
+      else if (status === 'churn') reportType = 'churn';
+      else reportType = 'subscribers';
+    }
+
     const result = await exportRecordsCsv(req.activePlatform, { reportType, ...rangeQuery(req.query, req), search, status, fields, minStartDate }, { userId: req.user.id, signal: requestSignal(req, res), minStartDate });
     await logAudit(req, 'EXPORT_RECORDS_CSV', 'Report', null, { reportType, rows: result.meta.rows, complete: result.meta.complete, file: result.filename });
     send(res, result);

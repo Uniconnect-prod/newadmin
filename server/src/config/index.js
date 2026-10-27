@@ -34,7 +34,7 @@ function requiredSecret(name, devFallbackLabel) {
 
 export const config = {
   // Kept on 5002 by default to avoid clashing with other local services; override with REPORTING_API_PORT.
-  port: parseInt(process.env.REPORTING_API_PORT || '5002', 10),
+  port: parseInt(process.env.PORT || process.env.REPORTING_API_PORT || '5002', 10),
   nodeEnv,
   isProduction,
   isTest,
@@ -69,12 +69,12 @@ export const config = {
     allowPrivateHosts: list(process.env.OUTBOUND_ALLOW_PRIVATE_HOSTS),
     // Plain HTTP is only permitted for hosts listed here (host or host:port).
     allowHttpHosts: list(process.env.OUTBOUND_ALLOW_HTTP_HOSTS),
-    defaultTimeoutMs: parseInt(process.env.OUTBOUND_DEFAULT_TIMEOUT_MS || '15000', 10),
-    maxTimeoutMs: 30000,
+    defaultTimeoutMs: parseInt(process.env.OUTBOUND_DEFAULT_TIMEOUT_MS || '60000', 10),
+    maxTimeoutMs: 120000,
     defaultMaxResponseBytes: parseInt(process.env.OUTBOUND_MAX_RESPONSE_BYTES || String(5 * 1024 * 1024), 10),
     maxResponseBytesCeiling: 20 * 1024 * 1024,
     maxRedirects: 3,
-    responseCacheTtlMs: parseInt(process.env.OUTBOUND_CACHE_TTL_MS || '30000', 10)
+    responseCacheTtlMs: parseInt(process.env.OUTBOUND_CACHE_TTL_MS || '60000', 10)
   },
 
   exports: {

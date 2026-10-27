@@ -85,8 +85,14 @@ export const reportController = {
     if (search && !/^[0-9+\s-]{3,40}$/.test(search)) throw new AppError(400, 'VALIDATION_ERROR', 'Search accepts phone numbers (digits, +, -, spaces).');
     const status = typeof req.query.status === 'string' && /^[A-Za-z_-]{1,30}$/.test(req.query.status) ? req.query.status : undefined;
     const minStartDate = userMinStartDate(req);
+    let targetReportType = reportType;
+    if (targetReportType === 'all' || targetReportType === 'overview') {
+      if (status === 'renewal') targetReportType = 'renewals';
+      else if (status === 'churn') targetReportType = 'churn';
+      else targetReportType = 'subscribers';
+    }
     const data = await getRecordsPage(req.activePlatform, {
-      reportType,
+      reportType: targetReportType,
       ...rangeQuery(req.query, req),
       page: req.query.page,
       pageSize: req.query.pageSize,
