@@ -44,8 +44,16 @@ async function start() {
   }
 
   const app = createApp();
-  app.listen(config.port, () => {
+  const server = app.listen(config.port, () => {
     console.log(`[Server] Reporting API listening on http://localhost:${config.port} (store: ${config.reportingStore})`);
+  });
+  server.on('error', (err) => {
+    if (err.code === 'EADDRINUSE') {
+      console.error(`[Server] Port ${config.port} is already in use. Stop the other process, or set PORT to a free port.`);
+    } else {
+      console.error('[Server] Fatal start-up error:', err);
+    }
+    process.exit(1);
   });
 }
 

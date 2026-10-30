@@ -74,7 +74,7 @@ npm run dev                 # http://localhost:5002
 # 2. Frontend (separate terminal)
 cd client
 npm install
-npm run dev                 # http://localhost:5173 (proxies /api to :5002)
+npm run dev                 # http://localhost:5175 (proxies /api to :5002)
 
 # Production build of the frontend
 npm run build               # → client/dist

@@ -3,6 +3,7 @@ import fs from 'fs';
 import path from 'path';
 import dotenv from 'dotenv';
 import { fileURLToPath } from 'url';
+import { sslForConnectionString } from '../src/store/pgStore.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -24,7 +25,7 @@ console.log(`[Init] Target database: ${maskedUrl}`);
 
 const pool = new pg.Pool({
   connectionString: targetUrl,
-  ssl: { rejectUnauthorized: false }
+  ssl: sslForConnectionString(targetUrl)
 });
 
 async function main() {

@@ -147,14 +147,35 @@ class PgCursor {
   }
 }
 
+export function sslForConnectionString(connectionString) {
+  let url;
+  try {
+    url = new URL(connectionString);
+  } catch {
+    return false;
+  }
+  const sslMode = (url.searchParams.get('sslmode') || '').toLowerCase();
+  const host = (url.hostname || '').toLowerCase();
+  const isLocal = host === 'localhost' || host === '127.0.0.1' || host === '::1';
+
+  if (sslMode === 'disable') return false;
+  if (sslMode === 'require' || sslMode === 'prefer' || sslMode === 'verify-ca' || sslMode === 'verify-full') {
+    return { rejectUnauthorized: sslMode.startsWith('verify') };
+  }
+  if (isLocal) return false;
+  return { rejectUnauthorized: false };
+}
+
 export async function createPgStore(connectionString) {
-  if (!connectionString) {
-    throw new Error('[Store] PostgreSQL connection string is required.');
+  if (!connectionString || /<[^>]+>/.test(connectionString)) {
+    throw new Error(
+      '[Store] DATABASE_URL is missing or still contains placeholder values such as <username> or <host>. Set a real PostgreSQL URL before starting the server.'
+    );
   }
 
   const pool = new Pool({
     connectionString,
-    ssl: { rejectUnauthorized: false },
+    ssl: sslForConnectionString(connectionString),
     max: 20,
     idleTimeoutMillis: 30000,
     connectionTimeoutMillis: 10000

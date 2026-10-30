@@ -48,7 +48,7 @@ export const config = {
 
   // Reporting administration database (users, roles, platform configuration, audit logs).
   reportingStore: (process.env.REPORTING_STORE || 'postgres').toLowerCase(),
-  databaseUrl: process.env.DATABASE_URL || process.env.POSTGRES_URI || process.env.PG_URI || '',
+  databaseUrl: process.env.DATABASE_URL || process.env.REPORTING_DATABASE_URL || process.env.POSTGRES_URI || process.env.PG_URI || '',
 
 
   // Optional first-run Super Admin (only used when the users collection is empty).

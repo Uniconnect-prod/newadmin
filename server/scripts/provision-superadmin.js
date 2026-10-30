@@ -4,6 +4,7 @@ import dotenv from 'dotenv';
 import readline from 'readline';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { sslForConnectionString } from '../src/store/pgStore.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -18,7 +19,7 @@ if (!connectionString) {
 
 const pool = new pg.Pool({
   connectionString,
-  ssl: { rejectUnauthorized: false }
+  ssl: sslForConnectionString(connectionString)
 });
 
 function prompt(question) {
